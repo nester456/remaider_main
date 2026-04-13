@@ -69,25 +69,38 @@ function findChannel(region) {
     // =========================
     let reportSent = false;
 
-    setInterval(async () => {
-      const now = new Date();
+    const dayjs = require("dayjs");
 
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
+let lastReportTime = null;
 
-      // 20:55 — звіт
-      if (hours === 20 && minutes === 55 && !reportSent) {
-        console.log("📊 Генеруємо звіт...");
-        await generateReport();
-        reportSent = true;
-      }
+setInterval(async () => {
+  const now = dayjs().utcOffset(3);
 
-      // 00:00 — скидання
-      if (hours === 0 && minutes === 0) {
-        reportSent = false;
-      }
+  const hours = now.hour();
+  const minutes = now.minute();
 
-    }, 60000);
+  const currentTime = `${hours}:${minutes}`;
+
+  // 🕗 08:55
+  if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
+    console.log("📊 Ранковий звіт...");
+    await generateReport();
+    lastReportTime = "morning";
+  }
+
+  // 🕗 20:55
+  if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
+    console.log("📊 Вечірній звіт...");
+    await generateReport();
+    lastReportTime = "evening";
+  }
+
+  // 🔄 скидання (щоб на наступний день знову працювало)
+  if (hours === 0 && minutes === 0) {
+    lastReportTime = null;
+  }
+
+}, 60000);
 
     // =========================
     // 📡 AIR ALERT
