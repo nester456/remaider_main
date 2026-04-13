@@ -2,11 +2,18 @@ const { Low } = require('lowdb');
 const { JSONFile } = require('lowdb/node');
 
 const adapter = new JSONFile('db.json');
-const db = new Low(adapter);
+
+// ❗ ВАЖЛИВО: передаємо default data
+const db = new Low(adapter, {
+  events: [],
+  lastLevels: {},
+  stats: {}
+});
 
 async function initDB() {
   await db.read();
 
+  // якщо файл пустий — ініціалізуємо
   db.data ||= {
     events: [],
     lastLevels: {},
