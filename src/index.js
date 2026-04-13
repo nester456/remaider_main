@@ -161,10 +161,16 @@ setInterval(async () => {
       // оновлюємо рівень
       await updateLevel(channelName, message);
 
-      let level = null;
+     let level = null;
 
-      if (message.includes("🔷")) level = "blue";
-      if (message.includes("✅")) level = "green";
+if (message.includes("🔷")) level = "blue";
+if (message.includes("✅")) level = "green";
+if (message.includes("🟡")) level = "yellow";
+if (message.includes("🚨")) level = "red";
+
+if (level) {
+  console.log(`📊 Рівень: ${level}`);
+}
 
       if (level) {
         cancelTimer(channelName, level);
