@@ -12,7 +12,7 @@ async function generateReport() {
   const events = db.data.events;
 
   if (!events.length) {
-    await sendMessage("📊 За зміну не було інцидентів");
+    await sendMessage("📊✅ За минулу зміну всі рівні було виставлено без затримок");
     return;
   }
 
