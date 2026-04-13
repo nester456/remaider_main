@@ -1,5 +1,5 @@
 module.exports = {
-  apiId: process.env.API_ID,
+  apiId: Number(process.env.API_ID),
   apiHash: process.env.API_HASH,
   session: process.env.SESSION,
 
