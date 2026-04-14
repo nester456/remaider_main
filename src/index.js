@@ -87,8 +87,19 @@ function findChannel(region) {
 // =========================
 const TelegramBot = require("node-telegram-bot-api");
 
-const bot = new TelegramBot(config.notifyBotToken, {
-  polling: true,
+const bot = new TelegramBot(config.notifyBotToken);
+
+// ❗ ВАЖЛИВО: прибираємо webhook
+bot.deleteWebHook().then(() => {
+  console.log("🧹 Webhook cleared");
+
+  bot.startPolling();
+  console.log("🤖 Bot polling started");
+});
+
+// тест
+bot.on("message", (msg) => {
+  console.log("🔥 ANY MESSAGE:", msg.text);
 });
 
 console.log("🤖 Bot API started");
