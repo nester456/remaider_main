@@ -7,31 +7,8 @@ const { parseMessage } = require("./parser");
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
 const { initDB } = require("./storage");
-const { generateReport } = require("./report");
 
 console.log("🚀 START");
-
-// 🔧 нормалізація
-function normalize(text) {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-// 🔗 пошук каналу
-function findChannel(region) {
-  const normRegion = normalize(region);
-
-  for (const [channel, aliases] of Object.entries(config.regions)) {
-    for (const alias of aliases) {
-      if (normRegion.includes(normalize(alias))) {
-        return channel;
-      }
-    }
-  }
-  return null;
-}
 
 (async () => {
   try {
@@ -41,17 +18,10 @@ function findChannel(region) {
       new StringSession(config.session),
       config.apiId,
       config.apiHash,
-      {
-        connectionRetries: 5,
-        useWSS: false,
-        deviceModel: "Desktop",
-        systemVersion: "Windows",
-        appVersion: "1.0",
-      }
+      { connectionRetries: 5 }
     );
 
     await client.start();
-
     console.log("✅ Connected to Telegram!");
 
     await client.getDialogs();
@@ -61,93 +31,58 @@ function findChannel(region) {
     console.log("📡 Updates activated");
 
     // =========================
-    // 🤖 BOT API (групи)
+    // 🤖 BOT API
     // =========================
     const TelegramBot = require("node-telegram-bot-api");
 
     const bot = new TelegramBot(config.notifyBotToken);
 
     await bot.deleteWebHook();
-    console.log("🧹 Webhook cleared");
-
     bot.startPolling();
+
     console.log("🤖 Bot polling started");
 
-    bot.on("message", (msg) => {
+    bot.on("message", async (msg) => {
+      const text = msg.text || "";
       const chatTitle = msg.chat.title || "";
 
-      console.log("🔥 ANY MESSAGE:", msg.text);
+      console.log("🔥 MESSAGE:", text);
       console.log("👉 CHAT:", chatTitle);
 
-      if (chatTitle.includes("Alerts")) {
-        console.log("\n🟢 BOT API MESSAGE");
-        console.log("📍 Chat:", chatTitle);
-        console.log("📍 ID:", msg.chat.id);
-        console.log("💬 Text:", msg.text);
+      if (!chatTitle.includes("Alerts")) return;
+
+      await updateLevel(chatTitle, text);
+
+      let level = null;
+      if (text.includes("🔷")) level = "blue";
+      if (text.includes("✅")) level = "green";
+
+      if (level) {
+        cancelTimer(chatTitle, level);
       }
     });
 
     // =========================
-    // 📊 ЗВІТИ
-    // =========================
-    let lastReportTime = null;
-
-    setInterval(async () => {
-      const now = new Date();
-
-      const hours = (now.getUTCHours() + 3) % 24;
-      const minutes = now.getUTCMinutes();
-
-      if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
-        console.log("📊 Ранковий звіт...");
-        await generateReport();
-        lastReportTime = "morning";
-      }
-
-      if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
-        console.log("📊 Вечірній звіт...");
-        await generateReport();
-        lastReportTime = "evening";
-      }
-
-      if (hours === 0 && minutes === 0) {
-        lastReportTime = null;
-      }
-
-    }, 60000);
-
-    // =========================
-    // 📡 AIR ALERT (основний канал)
+    // 📡 AIR ALERT
     // =========================
     client.addEventHandler(async (event) => {
       const message = event.message.message;
       const chat = await event.getChat();
 
       if (!message || !chat) return;
-
       if (chat.username !== config.sourceChannel) return;
 
-      console.log("\n📡 AIR ALERT MESSAGE:");
-      console.log(message);
+      console.log("\n📡 AIR ALERT:", message);
 
       const parsed = parseMessage(message);
-
-      if (!parsed) {
-        console.log("⛔ Не розпарсилось");
-        return;
-      }
-
-      console.log("📊 PARSED:", parsed);
+      if (!parsed) return;
 
       for (const region of parsed.regions) {
-        const channel = findChannel(region);
+        const channel = Object.keys(config.regions).find(c =>
+          config.regions[c].some(a => region.includes(a))
+        );
 
-        if (!channel) {
-          console.log("⚠️ Не знайдено канал для:", region);
-          continue;
-        }
-
-        console.log(`🎯 ${region} → ${channel}`);
+        if (!channel) continue;
 
         if (parsed.type === "alert") {
           startTimer(channel, "blue");
@@ -156,45 +91,6 @@ function findChannel(region) {
         if (parsed.type === "clear") {
           startTimer(channel, "green");
         }
-      }
-
-    }, new NewMessage({}));
-
-    // =========================
-    // 📥 ПРИВАТНІ КАНАЛИ (оновлення рівнів)
-    // =========================
-    client.addEventHandler(async (event) => {
-      const message = event.message.message;
-      const chat = await event.getChat();
-
-      if (!message || !chat) return;
-
-      const rawChannelName = chat.title;
-
-      const matchedChannel = Object.keys(config.regions).find(
-        key => normalize(key) === normalize(rawChannelName)
-      );
-
-      if (!matchedChannel) return;
-
-      console.log(`\n📥 UPDATE FROM ${matchedChannel}:`);
-      console.log(message);
-
-      await updateLevel(matchedChannel, message);
-
-      let level = null;
-
-      if (message.includes("🔷")) level = "blue";
-      if (message.includes("✅")) level = "green";
-      if (message.includes("🟡")) level = "yellow";
-      if (message.includes("🚨")) level = "red";
-
-      if (level) {
-        console.log(`📊 Рівень: ${level}`);
-      }
-
-      if (level === "blue" || level === "green") {
-        cancelTimer(matchedChannel, level);
       }
 
     }, new NewMessage({}));
