@@ -82,6 +82,28 @@ function findChannel(region) {
 
     await client.invoke(new Api.updates.GetState());
     console.log("📡 Updates activated");
+    // =========================
+// 🤖 BOT API (для Alerts груп)
+// =========================
+const TelegramBot = require("node-telegram-bot-api");
+
+const bot = new TelegramBot(config.notifyBotToken, {
+  polling: true,
+});
+
+console.log("🤖 Bot API started");
+
+// ловимо ВСІ повідомлення з Alerts груп
+bot.on("message", (msg) => {
+  const chatTitle = msg.chat.title || "";
+
+  if (chatTitle.includes("Alerts")) {
+    console.log("\n🟢 BOT API MESSAGE");
+    console.log("📍 Chat:", chatTitle);
+    console.log("📍 ID:", msg.chat.id);
+    console.log("💬 Text:", msg.text);
+  }
+});
 
     // =========================
     // 📊 ЗВІТИ

@@ -10,6 +10,7 @@
     "dayjs": "^1.11.20",
     "input": "^1.0.1",
     "lowdb": "^7.0.1",
+    "node-telegram-bot-api": "^0.67.0",
     "telegram": "^2.26.22"
   }
 }
