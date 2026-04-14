@@ -9,6 +9,14 @@ const { generateReport } = require("./report");
 
 console.log("🚀 START");
 
+// 🔧 нормалізація тексту
+function normalize(text) {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 // 🔍 Парсинг повідомлення
 function parseMessage(text) {
   if (!text) return null;
@@ -33,11 +41,15 @@ function parseMessage(text) {
   return { type, regions };
 }
 
-// 🔗 район → канал
+// 🔗 район → канал (розумний пошук)
 function findChannel(region) {
+  const normRegion = normalize(region);
+
   for (const [channel, aliases] of Object.entries(config.regions)) {
-    if (aliases.includes(region)) {
-      return channel;
+    for (const alias of aliases) {
+      if (normRegion.includes(normalize(alias))) {
+        return channel;
+      }
     }
   }
   return null;
@@ -59,32 +71,28 @@ function findChannel(region) {
     console.log("✅ Connected to Telegram!");
 
     // =========================
-    // 📊 ЗВІТИ (08:55 / 20:55 Київ)
+    // 📊 ЗВІТИ
     // =========================
     let lastReportTime = null;
 
     setInterval(async () => {
       const now = new Date();
 
-      // Київ = UTC+3
       const hours = (now.getUTCHours() + 3) % 24;
       const minutes = now.getUTCMinutes();
 
-      // 🕗 08:55
       if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
         console.log("📊 Ранковий звіт...");
         await generateReport();
         lastReportTime = "morning";
       }
 
-      // 🕗 20:55
       if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
         console.log("📊 Вечірній звіт...");
         await generateReport();
         lastReportTime = "evening";
       }
 
-      // 🔄 reset
       if (hours === 0 && minutes === 0) {
         lastReportTime = null;
       }
@@ -99,7 +107,6 @@ function findChannel(region) {
       const chat = await event.getChat();
 
       if (!message || !chat) return;
-
       if (chat.username !== config.sourceChannel) return;
 
       console.log("\n📡 AIR ALERT MESSAGE:");
@@ -140,16 +147,21 @@ function findChannel(region) {
 
       if (!message || !chat) return;
 
-      const channelName = chat.title;
+      const rawChannelName = chat.title;
+      const normChannel = normalize(rawChannelName);
 
-      console.log("DEBUG CHANNEL:", channelName);
+      console.log("DEBUG CHANNEL:", rawChannelName);
 
-      if (!config.regions[channelName]) return;
+      const matchedChannel = Object.keys(config.regions).find(
+        key => normalize(key) === normChannel
+      );
 
-      console.log(`\n📥 UPDATE FROM ${channelName}:`);
+      if (!matchedChannel) return;
+
+      console.log(`\n📥 UPDATE FROM ${matchedChannel}:`);
       console.log(message);
 
-      await updateLevel(channelName, message);
+      await updateLevel(matchedChannel, message);
 
       let level = null;
 
@@ -164,9 +176,8 @@ function findChannel(region) {
         console.log("⚠️ Не розпізнано рівень:", message);
       }
 
-      // ❗ тільки для контрольних рівнів
       if (level === "blue" || level === "green") {
-        cancelTimer(channelName, level);
+        cancelTimer(matchedChannel, level);
       }
 
     }, new NewMessage({}));
