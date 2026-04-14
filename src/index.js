@@ -1,6 +1,7 @@
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
+const { parseMessage } = require("./parser");
 
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
