@@ -1,8 +1,9 @@
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
+const { Raw } = require("telegram/events");
 
 const config = require("./config");
-const { startTimer, updateLevel, cancelTimer } = require("./watcher");
+const { updateLevel, cancelTimer } = require("./watcher");
 const { initDB } = require("./storage");
 
 console.log("🚀 START");
@@ -31,40 +32,36 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 🔥 RAW HANDLER (ФІНАЛЬНИЙ)
+    // 🔥 RAW EVENT HANDLER (100% WORKING)
     // =========================
     client.addEventHandler(async (event) => {
       try {
-        console.log("\n⚡ EVENT RECEIVED");
+        console.log("\n🔥 RAW EVENT CAUGHT");
+        console.log("TYPE:", event.className);
 
-        const message = event.message;
-        if (!message) return;
+        const msg = event.message;
 
-        const text = message.message;
+        if (!msg) return;
+
+        const text = msg.message;
 
         console.log("💬 TEXT:", text);
 
-        // 🔥 пробуємо отримати chat різними способами
-        let chatTitle = null;
+        let chatId = null;
 
-        if (message.peerId?.channelId) {
-          chatTitle = message.peerId.channelId.toString();
+        if (msg.peerId?.channelId) {
+          chatId = msg.peerId.channelId.toString();
         }
 
-        if (!chatTitle && event.chat) {
-          chatTitle = event.chat.title;
-        }
-
-        console.log("📍 CHAT:", chatTitle);
+        console.log("📍 CHAT ID:", chatId);
 
         // =========================
-        // 🔧 ЛОГІКА РІВНІВ
+        // 🔧 ЛОГІКА
         // =========================
 
         if (!text) return;
 
-        // поки працюємо по тексту (без прив'язки до чату)
-        await updateLevel(chatTitle || "unknown", text);
+        await updateLevel(chatId || "unknown", text);
 
         let level = null;
 
@@ -72,13 +69,13 @@ console.log("🚀 START");
         if (text.includes("✅")) level = "green";
 
         if (level) {
-          cancelTimer(chatTitle || "unknown", level);
+          cancelTimer(chatId || "unknown", level);
         }
 
       } catch (err) {
-        console.log("❌ ERROR:", err.message);
+        console.log("❌ RAW ERROR:", err.message);
       }
-    });
+    }, new Raw({}));
 
     // =========================
     // 🌐 KEEP ALIVE (Railway)
