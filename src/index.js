@@ -35,11 +35,21 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 🔥 RAW HANDLER
+    // 🔥 RAW HANDLER (ФІНАЛ)
     // =========================
     client.addEventHandler(async (event) => {
       try {
-        const msg = event.message;
+        const update = event.originalUpdate;
+
+        let msg = null;
+
+        // 🔥 обробка різних типів update
+        if (update.message) {
+          msg = update.message;
+        } else if (update.update?.message) {
+          msg = update.update.message;
+        }
+
         if (!msg) return;
 
         const text = msg.message;
@@ -156,7 +166,9 @@ console.log("🚀 START");
     http.createServer((req, res) => {
       res.write("Bot is running");
       res.end();
-    }).listen(3000);
+    }).listen(3000, () => {
+      console.log("🌐 HTTP server running");
+    });
 
   } catch (err) {
     console.error("❌ ERROR:", err);
