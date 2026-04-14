@@ -32,7 +32,7 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 🔥 RAW EVENT HANDLER (100% WORKING)
+    // 🔥 RAW EVENT HANDLER
     // =========================
     client.addEventHandler(async (event) => {
       try {
@@ -40,10 +40,10 @@ console.log("🚀 START");
         console.log("TYPE:", event.className);
 
         const msg = event.message;
-
         if (!msg) return;
 
         const text = msg.message;
+        if (!text) return;
 
         console.log("💬 TEXT:", text);
 
@@ -55,13 +55,17 @@ console.log("🚀 START");
 
         console.log("📍 CHAT ID:", chatId);
 
-        // =========================
-        // 🔧 ЛОГІКА
-        // =========================
+        const channelName = config.channelIds[chatId];
 
-        if (!text) return;
+        if (!channelName) {
+          console.log("⚠️ Unknown channel:", chatId);
+          return;
+        }
 
-        await updateLevel(chatId || "unknown", text);
+        console.log("✅ CHANNEL:", channelName);
+
+        // 🔧 логіка рівнів
+        await updateLevel(channelName, text);
 
         let level = null;
 
@@ -69,7 +73,7 @@ console.log("🚀 START");
         if (text.includes("✅")) level = "green";
 
         if (level) {
-          cancelTimer(chatId || "unknown", level);
+          cancelTimer(channelName, level);
         }
 
       } catch (err) {
