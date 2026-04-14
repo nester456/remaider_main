@@ -1,4 +1,4 @@
-const { TelegramClient, Api } = require("telegram");
+const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
 
@@ -22,17 +22,13 @@ console.log("🚀 START");
       { connectionRetries: 5 }
     );
 
-    client.setLogLevel("error");
-
     await client.start();
 
     console.log("✅ Connected to Telegram!");
-
     await client.getDialogs();
-    console.log("📡 Dialogs loaded");
 
     // =========================
-    // 🔥 1. POLLING AIR ALERT
+    // 🔥 1. AIR ALERT (POLLING)
     // =========================
     let lastMessageId = null;
 
@@ -40,17 +36,16 @@ console.log("🚀 START");
       try {
         const messages = await client.getMessages(config.sourceChannel, { limit: 1 });
 
-        if (!messages || !messages.length) return;
+        if (!messages?.length) return;
 
         const msg = messages[0];
 
-        if (msg.id === lastMessageId) return; // ❗ не дублюємо
-
+        if (msg.id === lastMessageId) return;
         lastMessageId = msg.id;
 
         const text = msg.message;
 
-        console.log("\n📡 AIR ALERT POLLING:");
+        console.log("\n📡 AIR ALERT:");
         console.log("💬 TEXT:", text);
 
         const parsed = parseMessage(text);
@@ -80,15 +75,14 @@ console.log("🚀 START");
       } catch (err) {
         console.log("❌ POLLING ERROR:", err.message);
       }
-    }, 10000); // кожні 10 сек
+    }, 10000);
 
     // =========================
-    // 🔥 2. ALERTS GROUPS (RAW)
+    // 🔥 2. ALERTS GROUPS
     // =========================
     client.addEventHandler(async (event) => {
       try {
         const update = event.originalUpdate;
-
         if (!update || !update._) return;
 
         let msg = null;
@@ -150,13 +144,11 @@ console.log("🚀 START");
       const minutes = now.getUTCMinutes();
 
       if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
-        console.log("📊 Morning report");
         await generateReport();
         lastReportTime = "morning";
       }
 
       if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
-        console.log("📊 Evening report");
         await generateReport();
         lastReportTime = "evening";
       }
@@ -166,16 +158,6 @@ console.log("🚀 START");
       }
 
     }, 60000);
-
-    // =========================
-    // 🌐 KEEP ALIVE
-    // =========================
-    const http = require("http");
-
-    http.createServer((req, res) => {
-      res.write("Bot is running");
-      res.end();
-    }).listen(3000);
 
   } catch (err) {
     console.error("❌ ERROR:", err);
