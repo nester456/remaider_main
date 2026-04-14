@@ -99,3 +99,12 @@ console.log("🚀 START");
     console.error("❌ ERROR:", err);
   }
 })();
+
+const http = require("http");
+
+http.createServer((req, res) => {
+  res.write("Bot is running");
+  res.end();
+}).listen(3000, () => {
+  console.log("🌐 HTTP server running");
+});
