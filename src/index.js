@@ -106,7 +106,10 @@ console.log("🤖 Bot API started");
 
 // ловимо ВСІ повідомлення з Alerts груп
 bot.on("message", (msg) => {
-  const chatTitle = msg.chat.title || "";
+  console.log("🔥 ANY MESSAGE:", msg.text);
+  console.log("👉 FROM CHAT ID:", msg.chat.id);
+  console.log("👉 CHAT TITLE:", msg.chat.title);
+});
 
   if (chatTitle.includes("Alerts")) {
     console.log("\n🟢 BOT API MESSAGE");
