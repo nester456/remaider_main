@@ -98,6 +98,28 @@ console.log("🧹 Webhook cleared");
 
 bot.startPolling();
 console.log("🤖 Bot polling started");
+// =========================
+// 🔍 ПЕРЕВІРКА ЧАТІВ БОТА
+// =========================
+setTimeout(async () => {
+  try {
+    const updates = await bot.getUpdates();
+
+    console.log("\n📡 UPDATES DEBUG:");
+
+    updates.forEach((u) => {
+      if (u.message) {
+        console.log("👉 CHAT TITLE:", u.message.chat.title);
+        console.log("👉 CHAT ID:", u.message.chat.id);
+        console.log("👉 TEXT:", u.message.text);
+        console.log("------------------------");
+      }
+    });
+
+  } catch (err) {
+    console.log("❌ getUpdates error:", err.message);
+  }
+}, 10000);
 
 // 🔥 ЄДИНИЙ handler
 bot.on("message", (msg) => {
