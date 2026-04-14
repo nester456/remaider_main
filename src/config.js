@@ -71,3 +71,5 @@ module.exports = {
     ]
   }
 };
+console.log("CHAT USERNAME:", chat.username);
+console.log("CHAT TITLE:", chat.title);

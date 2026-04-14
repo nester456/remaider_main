@@ -9,7 +9,7 @@ const { generateReport } = require("./report");
 
 console.log("🚀 START");
 
-// 🔧 нормалізація тексту
+// 🔧 нормалізація
 function normalize(text) {
   return text
     .toLowerCase()
@@ -17,7 +17,7 @@ function normalize(text) {
     .replace(/\s+/g, " ");
 }
 
-// 🔍 Парсинг повідомлення
+// 🔍 парсинг
 function parseMessage(text) {
   if (!text) return null;
 
@@ -41,7 +41,7 @@ function parseMessage(text) {
   return { type, regions };
 }
 
-// 🔗 район → канал (розумний пошук)
+// 🔗 пошук каналу
 function findChannel(region) {
   const normRegion = normalize(region);
 
@@ -100,6 +100,24 @@ function findChannel(region) {
     }, 60000);
 
     // =========================
+    // 📨 ГЛОБАЛЬНИЙ ЛОГ ВСЬОГО
+    // =========================
+    client.addEventHandler(async (event) => {
+      const message = event.message.message;
+      const chat = await event.getChat();
+
+      if (!message || !chat) return;
+
+      console.log("\n========================");
+      console.log("📨 НОВЕ ПОВІДОМЛЕННЯ");
+      console.log("📍 Title:", chat.title);
+      console.log("📍 Username:", chat.username);
+      console.log("📍 ID:", chat.id);
+      console.log("💬 Text:", message);
+
+    }, new NewMessage({}));
+
+    // =========================
     // 📡 AIR ALERT
     // =========================
     client.addEventHandler(async (event) => {
@@ -107,13 +125,21 @@ function findChannel(region) {
       const chat = await event.getChat();
 
       if (!message || !chat) return;
-      if (chat.username !== config.sourceChannel) return;
+
+      if (chat.username !== config.sourceChannel) {
+        console.log("⛔ НЕ air_alert канал:", chat.username);
+        return;
+      }
 
       console.log("\n📡 AIR ALERT MESSAGE:");
       console.log(message);
 
       const parsed = parseMessage(message);
-      if (!parsed) return;
+
+      if (!parsed) {
+        console.log("⛔ Не розпарсилось");
+        return;
+      }
 
       console.log("📊 PARSED:", parsed);
 
@@ -128,10 +154,12 @@ function findChannel(region) {
         console.log(`🎯 ${region} → ${channel}`);
 
         if (parsed.type === "alert") {
+          console.log("⏱ Старт таймера BLUE");
           startTimer(channel, "blue");
         }
 
         if (parsed.type === "clear") {
+          console.log("⏱ Старт таймера GREEN");
           startTimer(channel, "green");
         }
       }
@@ -148,15 +176,17 @@ function findChannel(region) {
       if (!message || !chat) return;
 
       const rawChannelName = chat.title;
-      const normChannel = normalize(rawChannelName);
 
       console.log("DEBUG CHANNEL:", rawChannelName);
 
       const matchedChannel = Object.keys(config.regions).find(
-        key => normalize(key) === normChannel
+        key => normalize(key) === normalize(rawChannelName)
       );
 
-      if (!matchedChannel) return;
+      if (!matchedChannel) {
+        console.log("⛔ Канал не в config:", rawChannelName);
+        return;
+      }
 
       console.log(`\n📥 UPDATE FROM ${matchedChannel}:`);
       console.log(message);
@@ -177,6 +207,7 @@ function findChannel(region) {
       }
 
       if (level === "blue" || level === "green") {
+        console.log("🛑 Скасування таймера");
         cancelTimer(matchedChannel, level);
       }
 

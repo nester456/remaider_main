@@ -15,11 +15,13 @@ const apiHash = "aac2dd23372dd5e747dd9e0bf0874a50";
 
   await client.start({
     phoneNumber: async () => await input.text("📱 Phone: "),
-    password: async () => await input.text("🔐 Password (if any): "),
-    phoneCode: async () => await input.text("📩 Code: "),
+    password: async () => await input.text("🔐 Password: "),
+    phoneCode: async () => await input.text("💬 Code: "),
     onError: (err) => console.log(err),
   });
 
-  console.log("✅ SESSION:");
+  console.log("\n🔥 SESSION:");
   console.log(client.session.save());
+
+  process.exit();
 })();
