@@ -2,9 +2,12 @@ const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
 
+const { parseMessage } = require("./parser");
+
 const config = require("./config");
-const { updateLevel, cancelTimer } = require("./watcher");
+const { startTimer, updateLevel, cancelTimer } = require("./watcher");
 const { initDB } = require("./storage");
+const { generateReport } = require("./report");
 
 console.log("🚀 START");
 
@@ -32,57 +35,121 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 🔥 RAW EVENT HANDLER
+    // 📡 RAW HANDLER (ВСЕ В ОДНОМУ)
     // =========================
     client.addEventHandler(async (event) => {
       try {
-        console.log("\n🔥 RAW EVENT CAUGHT");
-        console.log("TYPE:", event.className);
-
         const msg = event.message;
         if (!msg) return;
 
         const text = msg.message;
         if (!text) return;
 
-        console.log("💬 TEXT:", text);
-
+        // 🔹 визначаємо chatId
         let chatId = null;
 
         if (msg.peerId?.channelId) {
           chatId = msg.peerId.channelId.toString();
         }
 
-        console.log("📍 CHAT ID:", chatId);
+        // =========================
+        // 1️⃣ AIR ALERT (ЗАПУСК ТАЙМЕРІВ)
+        // =========================
+        if (msg.peerId?.channelId) {
+          const isAirAlert = event?.chat?.username === config.sourceChannel;
 
-        const channelName = config.channelIds[chatId];
+          if (isAirAlert) {
+            console.log("\n📡 AIR ALERT:", text);
 
-        if (!channelName) {
-          console.log("⚠️ Unknown channel:", chatId);
-          return;
+            const parsed = parseMessage(text);
+
+            if (!parsed) return;
+
+            for (const region of parsed.regions) {
+              const channel = Object.keys(config.regions).find(c =>
+                config.regions[c].some(a => region.includes(a))
+              );
+
+              if (!channel) {
+                console.log("⚠️ Не знайдено канал:", region);
+                continue;
+              }
+
+              console.log(`🎯 ${region} → ${channel}`);
+
+              if (parsed.type === "alert") {
+                startTimer(channel, "blue");
+              }
+
+              if (parsed.type === "clear") {
+                startTimer(channel, "green");
+              }
+            }
+
+            return;
+          }
         }
 
-        console.log("✅ CHANNEL:", channelName);
+        // =========================
+        // 2️⃣ ALERTS ГРУПИ (РІВНІ)
+        // =========================
+        const channelName = config.channelIds[chatId];
 
-        // 🔧 логіка рівнів
+        if (!channelName) return;
+
+        console.log("\n🔥 ALERT GROUP");
+        console.log("📍 CHANNEL:", channelName);
+        console.log("💬 TEXT:", text);
+
         await updateLevel(channelName, text);
 
         let level = null;
 
         if (text.includes("🔷")) level = "blue";
         if (text.includes("✅")) level = "green";
+        if (text.includes("🟡")) level = "yellow";
+        if (text.includes("🚨")) level = "red";
 
-        if (level) {
+        if (level === "blue" || level === "green") {
           cancelTimer(channelName, level);
         }
 
       } catch (err) {
-        console.log("❌ RAW ERROR:", err.message);
+        console.log("❌ ERROR:", err.message);
       }
     }, new Raw({}));
 
     // =========================
-    // 🌐 KEEP ALIVE (Railway)
+    // 📊 ЗВІТИ
+    // =========================
+    let lastReportTime = null;
+
+    setInterval(async () => {
+      const now = new Date();
+
+      const hours = (now.getUTCHours() + 3) % 24;
+      const minutes = now.getUTCMinutes();
+
+      if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
+        console.log("📊 Ранковий звіт...");
+        await generateReport();
+        lastReportTime = "morning";
+      }
+
+      if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
+        console.log("📊 Вечірній звіт...");
+        await generateReport();
+        lastReportTime = "evening";
+      }
+
+      if (hours === 0 && minutes === 0) {
+        lastReportTime = null;
+      }
+
+    }, 60000);
+
+    // =========================
+    // 🌐 KEEP ALIVE
     // =========================
     const http = require("http");
 
