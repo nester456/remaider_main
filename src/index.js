@@ -35,19 +35,23 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 🔥 RAW HANDLER (ФІНАЛ)
+    // 🔥 RAW HANDLER (СТАБІЛЬНИЙ)
     // =========================
     client.addEventHandler(async (event) => {
       try {
         const update = event.originalUpdate;
 
+        if (!update || !update._) return;
+
         let msg = null;
 
-        // 🔥 обробка різних типів update
-        if (update.message) {
+        // ✅ ОБРОБЛЯЄМО ТІЛЬКИ РЕАЛЬНІ ПОВІДОМЛЕННЯ
+        if (update._ === "updateNewChannelMessage") {
           msg = update.message;
-        } else if (update.update?.message) {
-          msg = update.update.message;
+        }
+
+        if (update._ === "updateNewMessage") {
+          msg = update.message;
         }
 
         if (!msg) return;
@@ -67,9 +71,7 @@ console.log("🚀 START");
         // =========================
         // 1️⃣ AIR ALERT
         // =========================
-        const isAirAlert = chatId === config.airAlertId;
-
-        if (isAirAlert) {
+        if (chatId === config.airAlertId) {
           console.log("📡 AIR ALERT DETECTED");
 
           const parsed = parseMessage(text);
