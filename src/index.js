@@ -15,13 +15,8 @@ function parseMessage(text) {
 
   let type = null;
 
-  if (text.includes("Повітряна тривога")) {
-    type = "alert";
-  }
-
-  if (text.includes("Відбій")) {
-    type = "clear";
-  }
+  if (text.includes("Повітряна тривога")) type = "alert";
+  if (text.includes("Відбій")) type = "clear";
 
   if (!type) return null;
 
@@ -50,7 +45,6 @@ function findChannel(region) {
 
 (async () => {
   try {
-    // ✅ база
     await initDB();
 
     const client = new TelegramClient(
@@ -65,42 +59,37 @@ function findChannel(region) {
     console.log("✅ Connected to Telegram!");
 
     // =========================
-    // 📊 ЗВІТ ПО ЗМІНІ
+    // 📊 ЗВІТИ (08:55 / 20:55 Київ)
     // =========================
-    let reportSent = false;
+    let lastReportTime = null;
 
-    const dayjs = require("dayjs");
+    setInterval(async () => {
+      const now = new Date();
 
-let lastReportTime = null;
+      // Київ = UTC+3
+      const hours = (now.getUTCHours() + 3) % 24;
+      const minutes = now.getUTCMinutes();
 
-setInterval(async () => {
-  const now = dayjs().utcOffset(3);
+      // 🕗 08:55
+      if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
+        console.log("📊 Ранковий звіт...");
+        await generateReport();
+        lastReportTime = "morning";
+      }
 
-  const hours = now.hour();
-  const minutes = now.minute();
+      // 🕗 20:55
+      if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
+        console.log("📊 Вечірній звіт...");
+        await generateReport();
+        lastReportTime = "evening";
+      }
 
-  const currentTime = `${hours}:${minutes}`;
+      // 🔄 reset
+      if (hours === 0 && minutes === 0) {
+        lastReportTime = null;
+      }
 
-  // 🕗 08:55
-  if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
-    console.log("📊 Ранковий звіт...");
-    await generateReport();
-    lastReportTime = "morning";
-  }
-
-  // 🕗 20:55
-  if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
-    console.log("📊 Вечірній звіт...");
-    await generateReport();
-    lastReportTime = "evening";
-  }
-
-  // 🔄 скидання (щоб на наступний день знову працювало)
-  if (hours === 0 && minutes === 0) {
-    lastReportTime = null;
-  }
-
-}, 60000);
+    }, 60000);
 
     // =========================
     // 📡 AIR ALERT
@@ -153,26 +142,30 @@ setInterval(async () => {
 
       const channelName = chat.title;
 
+      console.log("DEBUG CHANNEL:", channelName);
+
       if (!config.regions[channelName]) return;
 
       console.log(`\n📥 UPDATE FROM ${channelName}:`);
       console.log(message);
 
-      // оновлюємо рівень
       await updateLevel(channelName, message);
 
-     let level = null;
+      let level = null;
 
-if (message.includes("🔷")) level = "blue";
-if (message.includes("✅")) level = "green";
-if (message.includes("🟡")) level = "yellow";
-if (message.includes("🚨")) level = "red";
-
-if (level) {
-  console.log(`📊 Рівень: ${level}`);
-}
+      if (message.includes("🔷")) level = "blue";
+      if (message.includes("✅")) level = "green";
+      if (message.includes("🟡")) level = "yellow";
+      if (message.includes("🚨")) level = "red";
 
       if (level) {
+        console.log(`📊 Рівень: ${level}`);
+      } else {
+        console.log("⚠️ Не розпізнано рівень:", message);
+      }
+
+      // ❗ тільки для контрольних рівнів
+      if (level === "blue" || level === "green") {
         cancelTimer(channelName, level);
       }
 
