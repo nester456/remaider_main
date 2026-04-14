@@ -1,6 +1,7 @@
 const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
+
 const { parseMessage } = require("./parser");
 
 const config = require("./config");
@@ -16,30 +17,6 @@ function normalize(text) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, " ");
-}
-
-// 🔍 парсинг
-function parseMessage(text) {
-  if (!text) return null;
-
-  let type = null;
-
-  if (text.includes("Повітряна тривога")) type = "alert";
-  if (text.includes("Відбій")) type = "clear";
-
-  if (!type) return null;
-
-  const lines = text.split("\n");
-
-  const regions = lines
-    .map(l => l.replace("•", "").trim())
-    .filter(l =>
-      l &&
-      !l.includes("Повітряна") &&
-      !l.includes("Відбій")
-    );
-
-  return { type, regions };
 }
 
 // 🔗 пошук каналу
@@ -77,65 +54,38 @@ function findChannel(region) {
 
     console.log("✅ Connected to Telegram!");
 
-    // 🔥 КРИТИЧНО
     await client.getDialogs();
     console.log("📡 Dialogs loaded");
 
     await client.invoke(new Api.updates.GetState());
     console.log("📡 Updates activated");
+
     // =========================
-// 🤖 BOT API (для Alerts груп)
-// =========================
-// =========================
-// 🤖 BOT API (для Alerts груп)
-// =========================
-const TelegramBot = require("node-telegram-bot-api");
+    // 🤖 BOT API (групи)
+    // =========================
+    const TelegramBot = require("node-telegram-bot-api");
 
-const bot = new TelegramBot(config.notifyBotToken);
+    const bot = new TelegramBot(config.notifyBotToken);
 
-// очищаємо webhook
-await bot.deleteWebHook();
-console.log("🧹 Webhook cleared");
+    await bot.deleteWebHook();
+    console.log("🧹 Webhook cleared");
 
-bot.startPolling();
-console.log("🤖 Bot polling started");
-// =========================
-// 🔍 ПЕРЕВІРКА ЧАТІВ БОТА
-// =========================
-setTimeout(async () => {
-  try {
-    const updates = await bot.getUpdates();
+    bot.startPolling();
+    console.log("🤖 Bot polling started");
 
-    console.log("\n📡 UPDATES DEBUG:");
+    bot.on("message", (msg) => {
+      const chatTitle = msg.chat.title || "";
 
-    updates.forEach((u) => {
-      if (u.message) {
-        console.log("👉 CHAT TITLE:", u.message.chat.title);
-        console.log("👉 CHAT ID:", u.message.chat.id);
-        console.log("👉 TEXT:", u.message.text);
-        console.log("------------------------");
+      console.log("🔥 ANY MESSAGE:", msg.text);
+      console.log("👉 CHAT:", chatTitle);
+
+      if (chatTitle.includes("Alerts")) {
+        console.log("\n🟢 BOT API MESSAGE");
+        console.log("📍 Chat:", chatTitle);
+        console.log("📍 ID:", msg.chat.id);
+        console.log("💬 Text:", msg.text);
       }
     });
-
-  } catch (err) {
-    console.log("❌ getUpdates error:", err.message);
-  }
-}, 10000);
-
-// 🔥 ЄДИНИЙ handler
-bot.on("message", (msg) => {
-  const chatTitle = msg.chat.title || "";
-
-  console.log("🔥 ANY MESSAGE:", msg.text);
-  console.log("👉 CHAT:", chatTitle);
-
-  if (chatTitle.includes("Alerts")) {
-    console.log("\n🟢 BOT API MESSAGE");
-    console.log("📍 Chat:", chatTitle);
-    console.log("📍 ID:", msg.chat.id);
-    console.log("💬 Text:", msg.text);
-  }
-});
 
     // =========================
     // 📊 ЗВІТИ
@@ -167,29 +117,7 @@ bot.on("message", (msg) => {
     }, 60000);
 
     // =========================
-    // 📨 ГЛОБАЛЬНИЙ ЛОГ
-    // =========================
-   client.addEventHandler(async (event) => {
-  const message = event.message.message;
-  const chat = await event.getChat();
-
-  if (!message || !chat) return;
-
-  const title = chat.title || "";
-
-  // 🔥 ЛОВИМО ВСІ ALERTS ГРУПИ
-  if (title.includes("Alerts")) {
-    console.log("\n🟢 ALERTS GROUP MESSAGE DETECTED");
-    console.log("📍 Title:", title);
-    console.log("📍 Username:", chat.username);
-    console.log("📍 ID:", chat.id);
-    console.log("💬 Text:", message);
-  }
-
-}, new NewMessage({}));
-
-    // =========================
-    // 📡 AIR ALERT
+    // 📡 AIR ALERT (основний канал)
     // =========================
     client.addEventHandler(async (event) => {
       const message = event.message.message;
@@ -197,9 +125,7 @@ bot.on("message", (msg) => {
 
       if (!message || !chat) return;
 
-      if (chat.username !== config.sourceChannel) {
-        return;
-      }
+      if (chat.username !== config.sourceChannel) return;
 
       console.log("\n📡 AIR ALERT MESSAGE:");
       console.log(message);
@@ -224,12 +150,10 @@ bot.on("message", (msg) => {
         console.log(`🎯 ${region} → ${channel}`);
 
         if (parsed.type === "alert") {
-          console.log("⏱ Старт таймера BLUE");
           startTimer(channel, "blue");
         }
 
         if (parsed.type === "clear") {
-          console.log("⏱ Старт таймера GREEN");
           startTimer(channel, "green");
         }
       }
@@ -237,7 +161,7 @@ bot.on("message", (msg) => {
     }, new NewMessage({}));
 
     // =========================
-    // 📥 ПРИВАТНІ КАНАЛИ
+    // 📥 ПРИВАТНІ КАНАЛИ (оновлення рівнів)
     // =========================
     client.addEventHandler(async (event) => {
       const message = event.message.message;
@@ -270,7 +194,6 @@ bot.on("message", (msg) => {
       }
 
       if (level === "blue" || level === "green") {
-        console.log("🛑 Скасування таймера");
         cancelTimer(matchedChannel, level);
       }
 
