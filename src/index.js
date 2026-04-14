@@ -69,6 +69,8 @@ function findChannel(region) {
     await client.start();
 
     console.log("✅ Connected to Telegram!");
+    await client.getDialogs();
+console.log("📡 Dialogs loaded");
 
     // =========================
     // 📊 ЗВІТИ
