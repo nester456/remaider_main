@@ -1,4 +1,4 @@
-const { TelegramClient } = require("telegram");
+const { TelegramClient, Api } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { NewMessage } = require("telegram/events");
 
@@ -63,14 +63,25 @@ function findChannel(region) {
       new StringSession(config.session),
       config.apiId,
       config.apiHash,
-      { connectionRetries: 5 }
+      {
+        connectionRetries: 5,
+        useWSS: false,
+        deviceModel: "Desktop",
+        systemVersion: "Windows",
+        appVersion: "1.0",
+      }
     );
 
     await client.start();
 
     console.log("✅ Connected to Telegram!");
+
+    // 🔥 КРИТИЧНО
     await client.getDialogs();
-console.log("📡 Dialogs loaded");
+    console.log("📡 Dialogs loaded");
+
+    await client.invoke(new Api.updates.GetState());
+    console.log("📡 Updates activated");
 
     // =========================
     // 📊 ЗВІТИ
@@ -102,7 +113,7 @@ console.log("📡 Dialogs loaded");
     }, 60000);
 
     // =========================
-    // 📨 ГЛОБАЛЬНИЙ ЛОГ ВСЬОГО
+    // 📨 ГЛОБАЛЬНИЙ ЛОГ
     // =========================
     client.addEventHandler(async (event) => {
       const message = event.message.message;
@@ -129,7 +140,6 @@ console.log("📡 Dialogs loaded");
       if (!message || !chat) return;
 
       if (chat.username !== config.sourceChannel) {
-        console.log("⛔ НЕ air_alert канал:", chat.username);
         return;
       }
 
@@ -179,16 +189,11 @@ console.log("📡 Dialogs loaded");
 
       const rawChannelName = chat.title;
 
-      console.log("DEBUG CHANNEL:", rawChannelName);
-
       const matchedChannel = Object.keys(config.regions).find(
         key => normalize(key) === normalize(rawChannelName)
       );
 
-      if (!matchedChannel) {
-        console.log("⛔ Канал не в config:", rawChannelName);
-        return;
-      }
+      if (!matchedChannel) return;
 
       console.log(`\n📥 UPDATE FROM ${matchedChannel}:`);
       console.log(message);
@@ -204,8 +209,6 @@ console.log("📡 Dialogs loaded");
 
       if (level) {
         console.log(`📊 Рівень: ${level}`);
-      } else {
-        console.log("⚠️ Не розпізнано рівень:", message);
       }
 
       if (level === "blue" || level === "green") {
