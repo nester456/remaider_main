@@ -85,31 +85,26 @@ function findChannel(region) {
     // =========================
 // 🤖 BOT API (для Alerts груп)
 // =========================
+// =========================
+// 🤖 BOT API (для Alerts груп)
+// =========================
 const TelegramBot = require("node-telegram-bot-api");
 
 const bot = new TelegramBot(config.notifyBotToken);
 
-// ❗ ВАЖЛИВО: прибираємо webhook
-bot.deleteWebHook().then(() => {
-  console.log("🧹 Webhook cleared");
+// очищаємо webhook
+await bot.deleteWebHook();
+console.log("🧹 Webhook cleared");
 
-  bot.startPolling();
-  console.log("🤖 Bot polling started");
-});
+bot.startPolling();
+console.log("🤖 Bot polling started");
 
-// тест
+// 🔥 ЄДИНИЙ handler
 bot.on("message", (msg) => {
-  console.log("🔥 ANY MESSAGE:", msg.text);
-});
+  const chatTitle = msg.chat.title || "";
 
-console.log("🤖 Bot API started");
-
-// ловимо ВСІ повідомлення з Alerts груп
-bot.on("message", (msg) => {
   console.log("🔥 ANY MESSAGE:", msg.text);
-  console.log("👉 FROM CHAT ID:", msg.chat.id);
-  console.log("👉 CHAT TITLE:", msg.chat.title);
-});
+  console.log("👉 CHAT:", chatTitle);
 
   if (chatTitle.includes("Alerts")) {
     console.log("\n🟢 BOT API MESSAGE");
