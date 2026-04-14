@@ -3,12 +3,14 @@ module.exports = {
   apiHash: process.env.API_HASH,
   session: process.env.SESSION,
 
+  // 🔥 ДОДАЛИ
+  airAlertId: "ВСТАВ_СЮДИ_ID",
+
   sourceChannel: "air_alert_ua",
 
   notifyBotToken: process.env.BOT_TOKEN,
   notifyChannelId: process.env.CHANNEL_ID,
 
-  // 🔥 МАПА ID → КАНАЛ
   channelIds: {
     "2737520189": "Dnipro Alerts DRC",
     "2880018609": "Kharkiv Alerts DRC",
@@ -22,7 +24,6 @@ module.exports = {
     "2552939614": "Kyiv Alerts DRC"
   },
 
-  // (твій старий mapping залишаємо)
   regions: {
     "Dnipro Alerts DRC": ["Дніпровський район", "Дніпровський", "м. Дніпро"],
     "Kharkiv Alerts DRC": ["м. Харків", "Харків"],

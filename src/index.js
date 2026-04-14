@@ -35,7 +35,7 @@ console.log("🚀 START");
     console.log("📡 Updates activated");
 
     // =========================
-    // 📡 RAW HANDLER (ВСЕ В ОДНОМУ)
+    // 🔥 RAW HANDLER
     // =========================
     client.addEventHandler(async (event) => {
       try {
@@ -45,61 +45,61 @@ console.log("🚀 START");
         const text = msg.message;
         if (!text) return;
 
-        // 🔹 визначаємо chatId
         let chatId = null;
 
         if (msg.peerId?.channelId) {
           chatId = msg.peerId.channelId.toString();
         }
 
+        console.log("\n💬 TEXT:", text);
+        console.log("📍 CHAT ID:", chatId);
+
         // =========================
-        // 1️⃣ AIR ALERT (ЗАПУСК ТАЙМЕРІВ)
+        // 1️⃣ AIR ALERT
         // =========================
-        if (msg.peerId?.channelId) {
-          const isAirAlert = event?.chat?.username === config.sourceChannel;
+        const isAirAlert = chatId === config.airAlertId;
 
-          if (isAirAlert) {
-            console.log("\n📡 AIR ALERT:", text);
+        if (isAirAlert) {
+          console.log("📡 AIR ALERT DETECTED");
 
-            const parsed = parseMessage(text);
+          const parsed = parseMessage(text);
+          if (!parsed) return;
 
-            if (!parsed) return;
+          for (const region of parsed.regions) {
+            const channel = Object.keys(config.regions).find(c =>
+              config.regions[c].some(a => region.includes(a))
+            );
 
-            for (const region of parsed.regions) {
-              const channel = Object.keys(config.regions).find(c =>
-                config.regions[c].some(a => region.includes(a))
-              );
-
-              if (!channel) {
-                console.log("⚠️ Не знайдено канал:", region);
-                continue;
-              }
-
-              console.log(`🎯 ${region} → ${channel}`);
-
-              if (parsed.type === "alert") {
-                startTimer(channel, "blue");
-              }
-
-              if (parsed.type === "clear") {
-                startTimer(channel, "green");
-              }
+            if (!channel) {
+              console.log("⚠️ Не знайдено канал:", region);
+              continue;
             }
 
-            return;
+            console.log(`🎯 ${region} → ${channel}`);
+
+            if (parsed.type === "alert") {
+              startTimer(channel, "blue");
+            }
+
+            if (parsed.type === "clear") {
+              startTimer(channel, "green");
+            }
           }
+
+          return;
         }
 
         // =========================
-        // 2️⃣ ALERTS ГРУПИ (РІВНІ)
+        // 2️⃣ ALERTS ГРУПИ
         // =========================
         const channelName = config.channelIds[chatId];
 
-        if (!channelName) return;
+        if (!channelName) {
+          console.log("⚠️ Unknown channel:", chatId);
+          return;
+        }
 
-        console.log("\n🔥 ALERT GROUP");
-        console.log("📍 CHANNEL:", channelName);
-        console.log("💬 TEXT:", text);
+        console.log("✅ CHANNEL:", channelName);
 
         await updateLevel(channelName, text);
 
@@ -120,7 +120,7 @@ console.log("🚀 START");
     }, new Raw({}));
 
     // =========================
-    // 📊 ЗВІТИ
+    // 📊 REPORTS
     // =========================
     let lastReportTime = null;
 
@@ -131,13 +131,13 @@ console.log("🚀 START");
       const minutes = now.getUTCMinutes();
 
       if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
-        console.log("📊 Ранковий звіт...");
+        console.log("📊 Morning report");
         await generateReport();
         lastReportTime = "morning";
       }
 
       if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
-        console.log("📊 Вечірній звіт...");
+        console.log("📊 Evening report");
         await generateReport();
         lastReportTime = "evening";
       }
@@ -156,9 +156,7 @@ console.log("🚀 START");
     http.createServer((req, res) => {
       res.write("Bot is running");
       res.end();
-    }).listen(3000, () => {
-      console.log("🌐 HTTP server running");
-    });
+    }).listen(3000);
 
   } catch (err) {
     console.error("❌ ERROR:", err);
