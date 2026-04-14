@@ -115,20 +115,24 @@ function findChannel(region) {
     // =========================
     // 📨 ГЛОБАЛЬНИЙ ЛОГ
     // =========================
-    client.addEventHandler(async (event) => {
-      const message = event.message.message;
-      const chat = await event.getChat();
+   client.addEventHandler(async (event) => {
+  const message = event.message.message;
+  const chat = await event.getChat();
 
-      if (!message || !chat) return;
+  if (!message || !chat) return;
 
-      console.log("\n========================");
-      console.log("📨 НОВЕ ПОВІДОМЛЕННЯ");
-      console.log("📍 Title:", chat.title);
-      console.log("📍 Username:", chat.username);
-      console.log("📍 ID:", chat.id);
-      console.log("💬 Text:", message);
+  const title = chat.title || "";
 
-    }, new NewMessage({}));
+  // 🔥 ЛОВИМО ВСІ ALERTS ГРУПИ
+  if (title.includes("Alerts")) {
+    console.log("\n🟢 ALERTS GROUP MESSAGE DETECTED");
+    console.log("📍 Title:", title);
+    console.log("📍 Username:", chat.username);
+    console.log("📍 ID:", chat.id);
+    console.log("💬 Text:", message);
+  }
+
+}, new NewMessage({}));
 
     // =========================
     // 📡 AIR ALERT
