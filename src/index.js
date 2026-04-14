@@ -22,7 +22,7 @@ console.log("🚀 START");
       { connectionRetries: 5 }
     );
 
-    client.setLogLevel("debug");
+    client.setLogLevel("error");
 
     await client.start();
 
@@ -31,11 +31,59 @@ console.log("🚀 START");
     await client.getDialogs();
     console.log("📡 Dialogs loaded");
 
-    await client.invoke(new Api.updates.GetState());
-    console.log("📡 Updates activated");
+    // =========================
+    // 🔥 1. POLLING AIR ALERT
+    // =========================
+    let lastMessageId = null;
+
+    setInterval(async () => {
+      try {
+        const messages = await client.getMessages(config.sourceChannel, { limit: 1 });
+
+        if (!messages || !messages.length) return;
+
+        const msg = messages[0];
+
+        if (msg.id === lastMessageId) return; // ❗ не дублюємо
+
+        lastMessageId = msg.id;
+
+        const text = msg.message;
+
+        console.log("\n📡 AIR ALERT POLLING:");
+        console.log("💬 TEXT:", text);
+
+        const parsed = parseMessage(text);
+        if (!parsed) return;
+
+        for (const region of parsed.regions) {
+          const channel = Object.keys(config.regions).find(c =>
+            config.regions[c].some(a => region.includes(a))
+          );
+
+          if (!channel) {
+            console.log("⚠️ Не знайдено канал:", region);
+            continue;
+          }
+
+          console.log(`🎯 ${region} → ${channel}`);
+
+          if (parsed.type === "alert") {
+            startTimer(channel, "blue");
+          }
+
+          if (parsed.type === "clear") {
+            startTimer(channel, "green");
+          }
+        }
+
+      } catch (err) {
+        console.log("❌ POLLING ERROR:", err.message);
+      }
+    }, 10000); // кожні 10 сек
 
     // =========================
-    // 🔥 RAW HANDLER (СТАБІЛЬНИЙ)
+    // 🔥 2. ALERTS GROUPS (RAW)
     // =========================
     client.addEventHandler(async (event) => {
       try {
@@ -45,7 +93,6 @@ console.log("🚀 START");
 
         let msg = null;
 
-        // ✅ ОБРОБЛЯЄМО ТІЛЬКИ РЕАЛЬНІ ПОВІДОМЛЕННЯ
         if (update._ === "updateNewChannelMessage") {
           msg = update.message;
         }
@@ -65,53 +112,13 @@ console.log("🚀 START");
           chatId = msg.peerId.channelId.toString();
         }
 
-        console.log("\n💬 TEXT:", text);
-        console.log("📍 CHAT ID:", chatId);
-
-        // =========================
-        // 1️⃣ AIR ALERT
-        // =========================
-        if (chatId === config.airAlertId) {
-          console.log("📡 AIR ALERT DETECTED");
-
-          const parsed = parseMessage(text);
-          if (!parsed) return;
-
-          for (const region of parsed.regions) {
-            const channel = Object.keys(config.regions).find(c =>
-              config.regions[c].some(a => region.includes(a))
-            );
-
-            if (!channel) {
-              console.log("⚠️ Не знайдено канал:", region);
-              continue;
-            }
-
-            console.log(`🎯 ${region} → ${channel}`);
-
-            if (parsed.type === "alert") {
-              startTimer(channel, "blue");
-            }
-
-            if (parsed.type === "clear") {
-              startTimer(channel, "green");
-            }
-          }
-
-          return;
-        }
-
-        // =========================
-        // 2️⃣ ALERTS ГРУПИ
-        // =========================
         const channelName = config.channelIds[chatId];
 
-        if (!channelName) {
-          console.log("⚠️ Unknown channel:", chatId);
-          return;
-        }
+        if (!channelName) return;
 
-        console.log("✅ CHANNEL:", channelName);
+        console.log("\n🔥 ALERT GROUP");
+        console.log("📍 CHANNEL:", channelName);
+        console.log("💬 TEXT:", text);
 
         await updateLevel(channelName, text);
 
@@ -168,9 +175,7 @@ console.log("🚀 START");
     http.createServer((req, res) => {
       res.write("Bot is running");
       res.end();
-    }).listen(3000, () => {
-      console.log("🌐 HTTP server running");
-    });
+    }).listen(3000);
 
   } catch (err) {
     console.error("❌ ERROR:", err);
