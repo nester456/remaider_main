@@ -82,7 +82,8 @@ const normalize = (str) =>
             // 🔴 ALERT
             if (textNorm.includes("повітряна тривога")) {
               console.log(`🎯 ALERT → ${channel}`);
-              startTimer(channel, "blue");
+              console.log("🚀 START TIMER BLUE:", channel);
+startTimer(channel, "blue");
             }
 
             // 🟢 CLEAR (тільки реальний відбій)
@@ -91,7 +92,8 @@ const normalize = (str) =>
               textNorm.includes("тривог")
             ) {
               console.log(`🎯 CLEAR → ${channel}`);
-              startTimer(channel, "green");
+              console.log("🚀 START TIMER GREEN:", channel);
+startTimer(channel, "green");
             }
           }
         }

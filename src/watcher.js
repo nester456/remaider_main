@@ -20,6 +20,8 @@ async function updateLevel(channel, text) {
   const level = detectLevel(text);
   if (!level) return;
 
+  console.log("💾 save level:", channel, level);
+
   await saveLevel(channel, level);
 }
 
@@ -27,15 +29,16 @@ async function updateLevel(channel, text) {
 async function startTimer(channel, expectedLevel) {
   const current = getLastLevel(channel);
 
-  // 🔷 синій тільки після зеленого
-  if (expectedLevel === "blue" && current !== "green") {
-    console.log(`⛔ skip ${channel} — не було green`);
+  console.log("🧠 current level:", channel, current);
+
+  // ❗ НЕ блокуємо blue через state
+  if (expectedLevel === "blue" && current === "blue") {
+    console.log(`⛔ ${channel} вже blue`);
     return;
   }
 
-  // ❗ якщо вже потрібний рівень — нічого не робимо
-  if (current === expectedLevel) {
-    console.log(`⛔ ${channel} вже має ${expectedLevel}`);
+  if (expectedLevel === "green" && current === "green") {
+    console.log(`⛔ ${channel} вже green`);
     return;
   }
 
@@ -53,30 +56,33 @@ async function startTimer(channel, expectedLevel) {
     timer: setTimeout(async () => {
       const finalLevel = getLastLevel(channel);
 
-      // 🔥 ДОДАТКОВІ ПЕРЕВІРКИ (як у старому боті)
+      console.log("🔍 final level:", channel, finalLevel);
 
-      // якщо синій вже не актуальний
-      if (expectedLevel === "blue" && finalLevel !== "green") {
-        console.log(`ℹ️ skip blue reminder — рівень вже змінився`);
-        delete activeTimers[channel];
-        return;
-      }
+      // =========================
+      // 🔷 BLUE
+      // =========================
+      if (expectedLevel === "blue") {
 
-      // якщо зелений вже не актуальний
-      if (expectedLevel === "green" && finalLevel !== "blue") {
-        console.log(`ℹ️ skip green reminder — рівень вже змінився`);
-        delete activeTimers[channel];
-        return;
-      }
+        if (finalLevel === "blue") {
+          const delayMin = Math.floor((Date.now() - startTime) / 60000);
 
-      // ❗ якщо рівень НЕ встановлено
-      if (finalLevel !== expectedLevel) {
+          await addEvent({
+            channel,
+            expectedLevel,
+            status: delayMin === 0 ? "on_time" : "late",
+            delay: delayMin,
+            time: new Date().toISOString(),
+            hadRed: false
+          });
+
+          console.log(`✅ blue поставлено (${delayMin} хв)`);
+
+          delete activeTimers[channel];
+          return;
+        }
+
         await sendMessage(
-          `❗❗❗ Увага, ви не поставили ${
-            expectedLevel === "blue"
-              ? "🔷 *синій*"
-              : "✅ *зелений*"
-          } рівень тривоги в ${channel}`
+          `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
         );
 
         await addEvent({
@@ -87,21 +93,48 @@ async function startTimer(channel, expectedLevel) {
           hadRed: finalLevel === "red"
         });
 
-      } else {
-        // ⏱ був встановлений, але із затримкою
-        const delayMin = Math.floor((Date.now() - startTime) / 60000);
+        delete activeTimers[channel];
+        return;
+      }
+
+      // =========================
+      // ✅ GREEN
+      // =========================
+      if (expectedLevel === "green") {
+
+        if (finalLevel === "green") {
+          const delayMin = Math.floor((Date.now() - startTime) / 60000);
+
+          await addEvent({
+            channel,
+            expectedLevel,
+            status: delayMin === 0 ? "on_time" : "late",
+            delay: delayMin,
+            time: new Date().toISOString(),
+            hadRed: false
+          });
+
+          console.log(`✅ green поставлено (${delayMin} хв)`);
+
+          delete activeTimers[channel];
+          return;
+        }
+
+        await sendMessage(
+          `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
+        );
 
         await addEvent({
           channel,
           expectedLevel,
-          status: "late",
-          delay: delayMin,
+          status: "not_set",
           time: new Date().toISOString(),
-          hadRed: false
+          hadRed: finalLevel === "red"
         });
-      }
 
-      delete activeTimers[channel];
+        delete activeTimers[channel];
+        return;
+      }
 
     }, 60000),
 
@@ -109,29 +142,27 @@ async function startTimer(channel, expectedLevel) {
   };
 }
 
-// 🔹 скасування таймера (коли рівень поставили)
+// 🔹 скасування таймера
 function cancelTimer(channel, newLevel) {
   const entry = activeTimers[channel];
   if (!entry) return;
 
-  if (newLevel === "blue" || newLevel === "green") {
-    clearTimeout(entry.timer);
+  clearTimeout(entry.timer);
 
-    const delayMin = Math.floor((Date.now() - entry.startTime) / 60000);
+  const delayMin = Math.floor((Date.now() - entry.startTime) / 60000);
 
-    addEvent({
-      channel,
-      expectedLevel: newLevel,
-      status: "on_time",
-      delay: delayMin,
-      time: new Date().toISOString(),
-      hadRed: false
-    });
+  addEvent({
+    channel,
+    expectedLevel: newLevel,
+    status: "on_time",
+    delay: delayMin,
+    time: new Date().toISOString(),
+    hadRed: false
+  });
 
-    delete activeTimers[channel];
+  delete activeTimers[channel];
 
-    console.log(`✅ Таймер скасовано ${channel}`);
-  }
+  console.log(`✅ Таймер скасовано ${channel}`);
 }
 
 module.exports = {
