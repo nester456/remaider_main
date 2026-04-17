@@ -2,7 +2,7 @@ const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
 
-const { parseMessage } = require("./parser");
+const { parseMessage, normalize } = require("./parser");
 
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
@@ -23,19 +23,18 @@ console.log("🚀 START");
     );
 
     await client.start();
-
     console.log("✅ Connected to Telegram!");
+
     await client.getDialogs();
 
     // =========================
-    // 🔥 1. AIR ALERT (POLLING)
+    // 🔥 AIR ALERT (POLLING)
     // =========================
     let lastMessageId = null;
 
     setInterval(async () => {
       try {
         const messages = await client.getMessages(config.sourceChannel, { limit: 1 });
-
         if (!messages?.length) return;
 
         const msg = messages[0];
@@ -45,19 +44,22 @@ console.log("🚀 START");
 
         const text = msg.message;
 
-        console.log("\n📡 AIR ALERT:");
-        console.log("💬 TEXT:", text);
+        console.log("\n📡 AIR ALERT:", text);
 
         const parsed = parseMessage(text);
         if (!parsed) return;
 
         for (const region of parsed.regions) {
+          const regionNorm = normalize(region);
+
           const channel = Object.keys(config.regions).find(c =>
-            config.regions[c].some(a => region.includes(a))
+            config.regions[c].some(a =>
+              regionNorm.includes(normalize(a))
+            )
           );
 
           if (!channel) {
-            console.log("⚠️ Не знайдено канал:", region);
+            console.log("⚠️ Не знайдено:", region);
             continue;
           }
 
@@ -78,7 +80,7 @@ console.log("🚀 START");
     }, 10000);
 
     // =========================
-    // 🔥 2. ALERTS GROUPS
+    // 🔥 ALERT GROUPS
     // =========================
     client.addEventHandler(async (event) => {
       try {
@@ -87,32 +89,20 @@ console.log("🚀 START");
 
         let msg = null;
 
-        if (update._ === "updateNewChannelMessage") {
-          msg = update.message;
-        }
-
-        if (update._ === "updateNewMessage") {
-          msg = update.message;
-        }
+        if (update._ === "updateNewChannelMessage") msg = update.message;
+        if (update._ === "updateNewMessage") msg = update.message;
 
         if (!msg) return;
 
         const text = msg.message;
         if (!text) return;
 
-        let chatId = null;
-
-        if (msg.peerId?.channelId) {
-          chatId = msg.peerId.channelId.toString();
-        }
-
+        const chatId = msg.peerId?.channelId?.toString();
         const channelName = config.channelIds[chatId];
 
         if (!channelName) return;
 
-        console.log("\n🔥 ALERT GROUP");
-        console.log("📍 CHANNEL:", channelName);
-        console.log("💬 TEXT:", text);
+        console.log(`🔥 ${channelName}: ${text}`);
 
         await updateLevel(channelName, text);
 
@@ -135,26 +125,13 @@ console.log("🚀 START");
     // =========================
     // 📊 REPORTS
     // =========================
-    let lastReportTime = null;
-
     setInterval(async () => {
       const now = new Date();
-
       const hours = (now.getUTCHours() + 3) % 24;
       const minutes = now.getUTCMinutes();
 
-      if (hours === 8 && minutes === 55 && lastReportTime !== "morning") {
+      if ((hours === 8 || hours === 20) && minutes === 55) {
         await generateReport();
-        lastReportTime = "morning";
-      }
-
-      if (hours === 20 && minutes === 55 && lastReportTime !== "evening") {
-        await generateReport();
-        lastReportTime = "evening";
-      }
-
-      if (hours === 0 && minutes === 0) {
-        lastReportTime = null;
       }
 
     }, 60000);

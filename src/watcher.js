@@ -1,29 +1,37 @@
+const { sendMessage } = require("./notifier");
+const { getLastLevel, saveLevel, addEvent } = require("./storage");
+
+const activeTimers = {};
+
+function detectLevel(text) {
+  if (!text) return null;
+
+  if (text.includes("🔷")) return "blue";
+  if (text.includes("✅")) return "green";
+  if (text.includes("🟡")) return "yellow";
+  if (text.includes("🚨")) return "red";
+
+  return null;
+}
+
+async function updateLevel(channel, text) {
+  const level = detectLevel(text);
+  if (!level) return;
+
+  await saveLevel(channel, level);
+  console.log(`📊 UPDATE ${channel}: ${level}`);
+}
+
 async function startTimer(channel, expectedLevel) {
   const current = getLastLevel(channel);
 
-  // 🔥 1. Якщо рівень вже виставлений — НЕ запускаємо таймер
-  if (current === expectedLevel) {
-    console.log(`⛔ ${channel} вже має рівень ${expectedLevel}`);
-    return;
-  }
+  if (current === expectedLevel) return;
 
-  // 🔥 2. Якщо вже був red — теж НЕ треба blue
-  if (expectedLevel === "blue" && current === "red") {
-    console.log(`⛔ ${channel} вже має RED — пропускаємо blue`);
-    return;
-  }
+  if (expectedLevel === "blue" && current === "red") return;
 
-  // 🔥 3. Синій тільки після зеленого
-  if (expectedLevel === "blue" && current !== "green") {
-    console.log(`⛔ Пропуск ${channel} — не було зеленого`);
-    return;
-  }
+  if (expectedLevel === "blue" && current !== "green") return;
 
-  // 🔥 4. Якщо таймер вже є — не дублюємо
-  if (activeTimers[channel]) {
-    console.log(`⛔ Таймер вже існує для ${channel}`);
-    return;
-  }
+  if (activeTimers[channel]) return;
 
   const startTime = Date.now();
 
@@ -70,3 +78,33 @@ async function startTimer(channel, expectedLevel) {
     startTime
   };
 }
+
+function cancelTimer(channel, newLevel) {
+  const entry = activeTimers[channel];
+  if (!entry) return;
+
+  if (newLevel === "blue" || newLevel === "green") {
+    clearTimeout(entry.timer);
+
+    const delayMin = Math.floor((Date.now() - entry.startTime) / 60000);
+
+    addEvent({
+      channel,
+      expectedLevel: newLevel,
+      status: "on_time",
+      delay: delayMin,
+      time: new Date().toISOString(),
+      hadRed: false
+    });
+
+    delete activeTimers[channel];
+
+    console.log(`✅ Скасовано таймер ${channel}`);
+  }
+}
+
+module.exports = {
+  updateLevel,
+  startTimer,
+  cancelTimer
+};

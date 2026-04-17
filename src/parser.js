@@ -1,14 +1,12 @@
-// src/parser.js
-
-// 🔧 нормалізація тексту
 function normalize(text) {
   return text
     .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
+    .replace(/#/g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-// 🔍 визначення типу повідомлення
 function detectType(text) {
   if (!text) return null;
 
@@ -18,32 +16,35 @@ function detectType(text) {
   return null;
 }
 
-// 🗺 витяг районів
 function extractRegions(text) {
   if (!text) return [];
 
-  return text
-    .split("\n")
-    .map(line => line.replace("•", "").trim())
+  const lines = text.split("\n");
+
+  // 🔥 беремо хештеги (найнадійніше)
+  const hashtags = lines
+    .filter(line => line.includes("#"))
+    .map(line => normalize(line));
+
+  if (hashtags.length) return hashtags;
+
+  // fallback
+  return lines
+    .map(line => normalize(line))
     .filter(line =>
       line &&
-      !line.includes("Повітряна") &&
-      !line.includes("Відбій")
+      !line.includes("повітряна") &&
+      !line.includes("відбій")
     );
 }
 
-// 🎯 головна функція
 function parseMessage(text) {
   const type = detectType(text);
-
   if (!type) return null;
 
   const regions = extractRegions(text);
 
-  return {
-    type,      // alert / clear
-    regions    // список районів
-  };
+  return { type, regions };
 }
 
 module.exports = {
