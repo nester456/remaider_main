@@ -3,9 +3,6 @@ module.exports = {
   apiHash: process.env.API_HASH,
   session: process.env.SESSION,
 
-  // 🔥 ДОДАЛИ
-  airAlertId: "ВСТАВ_СЮДИ_ID",
-
   sourceChannel: "air_alert_ua",
 
   notifyBotToken: process.env.BOT_TOKEN,
@@ -25,15 +22,15 @@ module.exports = {
   },
 
   regions: {
-    "Dnipro Alerts DRC": ["Дніпровський район", "Дніпровський", "м. Дніпро"],
-    "Kharkiv Alerts DRC": ["м. Харків", "Харків"],
-    "Kherson Alerts DRC": ["Херсонський район", "Херсонський"],
-    "Kyiv Alerts DRC": ["м. Київ", "Київ"],
-    "Mykolaiv Alerts DRC": ["Миколаївський район", "Миколаївський"],
-    "Shostka Alerts DRC": ["Шосткинський район", "Шостка"],
-    "Slovyansk Alerts DRC": ["Краматорський район", "Краматорський"],
-    "Sumy Alerts DRC": ["Сумський район", "Сумський"],
-    "Barvinkove Alerts DRC": ["Ізюмський район", "Ізюмський"],
-    "Zaporizhzhia Alerts DRC": ["м. Запоріжжя", "Запоріжжя"]
+    "Dnipro Alerts DRC": ["дніпровський район", "дніпровський", "м дніпро", "дніпро"],
+    "Kharkiv Alerts DRC": ["м харків", "харків"],
+    "Kherson Alerts DRC": ["херсонський район", "херсонський"],
+    "Kyiv Alerts DRC": ["м київ", "київ"],
+    "Mykolaiv Alerts DRC": ["миколаївський район", "миколаївський"],
+    "Shostka Alerts DRC": ["шосткинський район", "шостка", "м шостка"],
+    "Slovyansk Alerts DRC": ["краматорський район", "краматорський"],
+    "Sumy Alerts DRC": ["сумський район", "сумський"],
+    "Barvinkove Alerts DRC": ["ізюмський район", "ізюмський"],
+    "Zaporizhzhia Alerts DRC": ["м запоріжжя", "запоріжжя"]
   }
 };

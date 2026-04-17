@@ -2,7 +2,7 @@ const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
 
-const { parseMessage, normalize } = require("./parser");
+const { detectType } = require("./parser");
 
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
@@ -10,6 +10,16 @@ const { initDB } = require("./storage");
 const { generateReport } = require("./report");
 
 console.log("🚀 START");
+
+// 🔥 normalize функція
+const normalize = (str) =>
+  str
+    .toLowerCase()
+    .replace(/#/g, "")
+    .replace(/\./g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
 (async () => {
   try {
@@ -23,8 +33,8 @@ console.log("🚀 START");
     );
 
     await client.start();
-    console.log("✅ Connected to Telegram!");
 
+    console.log("✅ Connected to Telegram!");
     await client.getDialogs();
 
     // =========================
@@ -46,30 +56,25 @@ console.log("🚀 START");
 
         console.log("\n📡 AIR ALERT:", text);
 
-        const parsed = parseMessage(text);
-        if (!parsed) return;
+        const type = detectType(text);
+        if (!type) return;
 
-        for (const region of parsed.regions) {
-          const regionNorm = normalize(region);
+        const textNorm = normalize(text);
 
-          const channel = Object.keys(config.regions).find(c =>
-            config.regions[c].some(a =>
-              regionNorm.includes(normalize(a))
-            )
+        for (const [channel, keywords] of Object.entries(config.regions)) {
+          const matchedKeyword = keywords.find(keyword =>
+            textNorm.includes(normalize(keyword))
           );
 
-          if (!channel) {
-            console.log("⚠️ Не знайдено:", region);
-            continue;
-          }
+          if (!matchedKeyword) continue;
 
-          console.log(`🎯 ${region} → ${channel}`);
+          console.log(`🎯 ${matchedKeyword} → ${channel}`);
 
-          if (parsed.type === "alert") {
+          if (type === "alert") {
             startTimer(channel, "blue");
           }
 
-          if (parsed.type === "clear") {
+          if (type === "clear") {
             startTimer(channel, "green");
           }
         }
