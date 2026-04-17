@@ -1,9 +1,6 @@
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
-const { TelegramClient } = require("telegram");
-const { StringSession } = require("telegram/sessions");
-const { Raw } = require("telegram/events");
 
 const { detectType } = require("./parser");
 
