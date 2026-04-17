@@ -1,131 +1,191 @@
-const { sendMessage } = require("./notifier");
-const { getLastLevel, saveLevel, addEvent } = require("./storage");
+const { TelegramClient } = require("telegram");
+const { StringSession } = require("telegram/sessions");
+const { Raw } = require("telegram/events");
 
-const activeTimers = {};
+const config = require("./config");
+const { startTimer, updateLevel, cancelTimer } = require("./watcher");
+const { initDB } = require("./storage");
+const { generateReport } = require("./report");
 
-// 🔹 визначення рівня
-function detectLevel(text) {
-  if (!text) return null;
+console.log("🚀 START FILE");
 
-  if (text.includes("🔷")) return "blue";
-  if (text.includes("✅")) return "green";
-  if (text.includes("🟡")) return "yellow";
-  if (text.includes("🚨")) return "red";
+// 🔹 normalize
+const normalize = (str) =>
+  str
+    .toLowerCase()
+    .replace(/#/g, "")
+    .replace(/\./g, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  return null;
-}
+(async () => {
+  try {
+    console.log("🔧 INIT DB...");
+    await initDB();
 
-// 🔹 оновлення рівня
-async function updateLevel(channel, text) {
-  const level = detectLevel(text);
-  if (!level) return;
+    const client = new TelegramClient(
+      new StringSession(config.session),
+      config.apiId,
+      config.apiHash,
+      { connectionRetries: 5 }
+    );
 
-  console.log("💾 SAVE LEVEL:", channel, level);
+    console.log("🔌 BEFORE CONNECT...");
+    await client.connect();
+    console.log("✅ CONNECTED TO TELEGRAM");
 
-  await saveLevel(channel, level);
-}
+    // 🔐 INIT MESSAGE ID
+    let lastMessageId = 0;
 
-// 🔹 старт таймера
-async function startTimer(channel, expectedLevel) {
-  const current = getLastLevel(channel);
+    const init = await client.getMessages(config.sourceChannel, { limit: 1 });
+    if (init.length > 0) {
+      lastMessageId = init[0].id;
+      console.log("🔐 INITIALIZED AT:", lastMessageId);
+    }
 
-  console.log("\n🚀 START TIMER");
-  console.log("📍 CHANNEL:", channel);
-  console.log("🎯 EXPECTED:", expectedLevel);
-  console.log("🧠 CURRENT LEVEL:", current);
+    // =========================
+    // 🔥 AIR ALERT (POLLING)
+    // =========================
+    setInterval(async () => {
+      try {
+        const messages = await client.getMessages(config.sourceChannel, { limit: 10 });
 
-  if (expectedLevel === "blue" && current === "blue") {
-    console.log("⛔ вже blue — skip");
-    return;
-  }
+        if (!messages?.length) return;
 
-  if (expectedLevel === "green" && current === "green") {
-    console.log("⛔ вже green — skip");
-    return;
-  }
+        const sorted = messages.sort((a, b) => a.id - b.id);
 
-  if (activeTimers[channel]) {
-    console.log("⛔ таймер вже існує");
-    return;
-  }
+        for (const msg of sorted) {
+          if (!msg.message) continue;
+          if (msg.id <= lastMessageId) continue;
 
-  const startTime = Date.now();
+          lastMessageId = msg.id;
 
-  activeTimers[channel] = {
-    timer: setTimeout(async () => {
-      const finalLevel = getLastLevel(channel);
+          const text = msg.message;
+          const textNorm = normalize(text);
 
-      console.log("\n⏱ TIMER FIRED");
-      console.log("📍 CHANNEL:", channel);
-      console.log("🎯 EXPECTED:", expectedLevel);
-      console.log("🔍 FINAL LEVEL:", finalLevel);
+          console.log("\n📡 AIR ALERT:");
+          console.log("💬 TEXT:", text);
 
-      // 🔷 BLUE
-      if (expectedLevel === "blue") {
+          const matched = new Set();
 
-        if (finalLevel === "blue") {
-          console.log("✅ BLUE OK — поставлено");
+          for (const [channel, keywords] of Object.entries(config.regions)) {
+            if (matched.has(channel)) continue;
 
-          delete activeTimers[channel];
+            const hit = keywords.some(keyword =>
+              textNorm.includes(normalize(keyword))
+            );
+
+            if (!hit) continue;
+
+            matched.add(channel);
+
+            // 🔴 ALERT
+            if (textNorm.includes("повітряна тривога")) {
+              console.log(`🎯 ALERT → ${channel}`);
+              console.log("🚀 START TIMER BLUE:", channel);
+              startTimer(channel, "blue");
+            }
+
+            // 🟢 CLEAR
+            if (
+              textNorm.includes("відбій") &&
+              textNorm.includes("тривог")
+            ) {
+              console.log(`🎯 CLEAR → ${channel}`);
+              console.log("🚀 START TIMER GREEN:", channel);
+              startTimer(channel, "green");
+            }
+          }
+        }
+
+      } catch (err) {
+        console.log("❌ POLLING ERROR:", err.message);
+      }
+    }, 10000);
+
+    // =========================
+    // 🔥 ALERT GROUPS
+    // =========================
+    client.addEventHandler(async (event) => {
+      try {
+        const update = event.originalUpdate;
+        if (!update || !update._) return;
+
+        let msg = null;
+
+        if (update._ === "updateNewChannelMessage") msg = update.message;
+        if (update._ === "updateNewMessage") msg = update.message;
+
+        if (!msg) return;
+
+        const text = msg.message;
+        if (!text) return;
+
+        // 🔥 ВИЗНАЧЕННЯ CHAT ID
+        let chatId = null;
+
+        if (msg.peerId?.channelId) {
+          chatId = "-100" + msg.peerId.channelId.toString();
+        }
+
+        if (msg.peerId?.chatId) {
+          chatId = msg.peerId.chatId.toString();
+        }
+
+        console.log("\n📩 NEW GROUP MESSAGE");
+        console.log("📩 CHAT ID:", chatId);
+        console.log("💬 TEXT:", text);
+
+        const channelName = config.channelIds[chatId];
+
+        if (!channelName) {
+          console.log("⚠️ UNKNOWN CHANNEL (немає в config)");
           return;
         }
 
-        console.log("❗ BLUE NOT SET → SEND REMINDER");
+        console.log("🎯 MATCHED CHANNEL:", channelName);
 
-        await sendMessage(
-          `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
-        );
+        // 🔥 UPDATE LEVEL
+        await updateLevel(channelName, text);
 
-        delete activeTimers[channel];
-        return;
-      }
+        let level = null;
 
-      // ✅ GREEN
-      if (expectedLevel === "green") {
+        if (text.includes("🔷")) level = "blue";
+        if (text.includes("✅")) level = "green";
+        if (text.includes("🟡")) level = "yellow";
+        if (text.includes("🚨")) level = "red";
 
-        if (finalLevel === "green") {
-          console.log("✅ GREEN OK — поставлено");
+        console.log("📊 DETECTED LEVEL:", level);
 
-          delete activeTimers[channel];
-          return;
+        // 🔥 CANCEL TIMER
+        if (level === "blue" || level === "green") {
+          console.log("🛑 TRY CANCEL TIMER:", channelName, level);
+          cancelTimer(channelName, level);
         }
 
-        console.log("❗ GREEN NOT SET → SEND REMINDER");
+      } catch (err) {
+        console.log("❌ ERROR:", err.message);
+      }
+    }, new Raw({}));
 
-        await sendMessage(
-          `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
-        );
+    // =========================
+    // 📊 REPORTS
+    // =========================
+    setInterval(async () => {
+      const now = new Date();
 
-        delete activeTimers[channel];
-        return;
+      const hours = (now.getUTCHours() + 3) % 24;
+      const minutes = now.getUTCMinutes();
+
+      if ((hours === 8 || hours === 20) && minutes === 55) {
+        console.log("📊 GENERATE REPORT");
+        await generateReport();
       }
 
-    }, 60000),
+    }, 60000);
 
-    startTime
-  };
-}
-
-// 🔹 скасування таймера
-function cancelTimer(channel, newLevel) {
-  const entry = activeTimers[channel];
-
-  console.log("\n🛑 CANCEL TIMER TRY");
-  console.log("📍 CHANNEL:", channel);
-  console.log("📊 NEW LEVEL:", newLevel);
-  console.log("⏱ HAS TIMER:", !!entry);
-
-  if (!entry) return;
-
-  clearTimeout(entry.timer);
-
-  console.log("✅ TIMER CANCELLED:", channel);
-
-  delete activeTimers[channel];
-}
-
-module.exports = {
-  updateLevel,
-  startTimer,
-  cancelTimer
-};
+  } catch (err) {
+    console.error("❌ GLOBAL ERROR:", err);
+  }
+})();
