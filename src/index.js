@@ -1,6 +1,9 @@
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
+const { TelegramClient } = require("telegram");
+const { StringSession } = require("telegram/sessions");
+const { Raw } = require("telegram/events");
 
 const { detectType } = require("./parser");
 
@@ -11,7 +14,7 @@ const { generateReport } = require("./report");
 
 console.log("🚀 START");
 
-// 🔥 normalize функція
+// 🔥 нормалізація
 const normalize = (str) =>
   str
     .toLowerCase()
@@ -38,44 +41,52 @@ const normalize = (str) =>
     await client.getDialogs();
 
     // =========================
-    // 🔥 AIR ALERT (POLLING)
+    // 🔥 AIR ALERT (ПРАВИЛЬНИЙ POLLING)
     // =========================
-    let lastMessageId = null;
+    let lastMessageId = 0;
 
     setInterval(async () => {
       try {
-        const messages = await client.getMessages(config.sourceChannel, { limit: 1 });
+        const messages = await client.getMessages(config.sourceChannel, { limit: 10 });
+
         if (!messages?.length) return;
 
-        const msg = messages[0];
+        // від старих до нових
+        const sorted = messages.sort((a, b) => a.id - b.id);
 
-        if (msg.id === lastMessageId) return;
-        lastMessageId = msg.id;
+        for (const msg of sorted) {
+          if (!msg.message) continue;
 
-        const text = msg.message;
+          // ❗ пропускаємо вже оброблені
+          if (msg.id <= lastMessageId) continue;
 
-        console.log("\n📡 AIR ALERT:", text);
+          lastMessageId = msg.id;
 
-        const type = detectType(text);
-        if (!type) return;
+          const text = msg.message;
 
-        const textNorm = normalize(text);
+          console.log("\n📡 AIR ALERT:", text);
 
-        for (const [channel, keywords] of Object.entries(config.regions)) {
-          const matchedKeyword = keywords.find(keyword =>
-            textNorm.includes(normalize(keyword))
-          );
+          const type = detectType(text);
+          if (!type) continue;
 
-          if (!matchedKeyword) continue;
+          const textNorm = normalize(text);
 
-          console.log(`🎯 ${matchedKeyword} → ${channel}`);
+          for (const [channel, keywords] of Object.entries(config.regions)) {
+            const matchedKeyword = keywords.find(keyword =>
+              textNorm.includes(normalize(keyword))
+            );
 
-          if (type === "alert") {
-            startTimer(channel, "blue");
-          }
+            if (!matchedKeyword) continue;
 
-          if (type === "clear") {
-            startTimer(channel, "green");
+            console.log(`🎯 ${matchedKeyword} → ${channel}`);
+
+            if (type === "alert") {
+              startTimer(channel, "blue");
+            }
+
+            if (type === "clear") {
+              startTimer(channel, "green");
+            }
           }
         }
 
@@ -85,7 +96,7 @@ const normalize = (str) =>
     }, 10000);
 
     // =========================
-    // 🔥 ALERT GROUPS
+    // 🔥 ALERT GROUPS (приватні канали)
     // =========================
     client.addEventHandler(async (event) => {
       try {
