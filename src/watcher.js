@@ -20,7 +20,7 @@ async function updateLevel(channel, text) {
   const level = detectLevel(text);
   if (!level) return;
 
-  console.log("💾 save level:", channel, level);
+  console.log("💾 SAVE LEVEL:", channel, level);
 
   await saveLevel(channel, level);
 }
@@ -29,108 +29,72 @@ async function updateLevel(channel, text) {
 async function startTimer(channel, expectedLevel) {
   const current = getLastLevel(channel);
 
-  console.log("🧠 current level:", channel, current);
+  console.log("\n🚀 START TIMER");
+  console.log("📍 CHANNEL:", channel);
+  console.log("🎯 EXPECTED:", expectedLevel);
+  console.log("🧠 CURRENT LEVEL:", current);
 
-  // ❗ НЕ блокуємо blue через state
   if (expectedLevel === "blue" && current === "blue") {
-    console.log(`⛔ ${channel} вже blue`);
+    console.log("⛔ вже blue — skip");
     return;
   }
 
   if (expectedLevel === "green" && current === "green") {
-    console.log(`⛔ ${channel} вже green`);
+    console.log("⛔ вже green — skip");
     return;
   }
 
-  // ❗ не дублюємо таймер
   if (activeTimers[channel]) {
-    console.log(`⛔ таймер вже є для ${channel}`);
+    console.log("⛔ таймер вже існує");
     return;
   }
 
   const startTime = Date.now();
 
-  console.log(`⏱ Таймер для ${channel} (${expectedLevel})`);
-
   activeTimers[channel] = {
     timer: setTimeout(async () => {
       const finalLevel = getLastLevel(channel);
 
-      console.log("🔍 final level:", channel, finalLevel);
+      console.log("\n⏱ TIMER FIRED");
+      console.log("📍 CHANNEL:", channel);
+      console.log("🎯 EXPECTED:", expectedLevel);
+      console.log("🔍 FINAL LEVEL:", finalLevel);
 
-      // =========================
       // 🔷 BLUE
-      // =========================
       if (expectedLevel === "blue") {
 
         if (finalLevel === "blue") {
-          const delayMin = Math.floor((Date.now() - startTime) / 60000);
-
-          await addEvent({
-            channel,
-            expectedLevel,
-            status: delayMin === 0 ? "on_time" : "late",
-            delay: delayMin,
-            time: new Date().toISOString(),
-            hadRed: false
-          });
-
-          console.log(`✅ blue поставлено (${delayMin} хв)`);
+          console.log("✅ BLUE OK — поставлено");
 
           delete activeTimers[channel];
           return;
         }
+
+        console.log("❗ BLUE NOT SET → SEND REMINDER");
 
         await sendMessage(
           `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
         );
 
-        await addEvent({
-          channel,
-          expectedLevel,
-          status: "not_set",
-          time: new Date().toISOString(),
-          hadRed: finalLevel === "red"
-        });
-
         delete activeTimers[channel];
         return;
       }
 
-      // =========================
       // ✅ GREEN
-      // =========================
       if (expectedLevel === "green") {
 
         if (finalLevel === "green") {
-          const delayMin = Math.floor((Date.now() - startTime) / 60000);
-
-          await addEvent({
-            channel,
-            expectedLevel,
-            status: delayMin === 0 ? "on_time" : "late",
-            delay: delayMin,
-            time: new Date().toISOString(),
-            hadRed: false
-          });
-
-          console.log(`✅ green поставлено (${delayMin} хв)`);
+          console.log("✅ GREEN OK — поставлено");
 
           delete activeTimers[channel];
           return;
         }
 
+        console.log("❗ GREEN NOT SET → SEND REMINDER");
+
         await sendMessage(
           `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
         );
-
-        await addEvent({
-          channel,
-          expectedLevel,
-          status: "not_set",
-          time: new Date().toISOString(),
-          hadRed: finalLevel === "red"
-        });
 
         delete activeTimers[channel];
         return;
@@ -145,24 +109,19 @@ async function startTimer(channel, expectedLevel) {
 // 🔹 скасування таймера
 function cancelTimer(channel, newLevel) {
   const entry = activeTimers[channel];
+
+  console.log("\n🛑 CANCEL TIMER TRY");
+  console.log("📍 CHANNEL:", channel);
+  console.log("📊 NEW LEVEL:", newLevel);
+  console.log("⏱ HAS TIMER:", !!entry);
+
   if (!entry) return;
 
   clearTimeout(entry.timer);
 
-  const delayMin = Math.floor((Date.now() - entry.startTime) / 60000);
-
-  addEvent({
-    channel,
-    expectedLevel: newLevel,
-    status: "on_time",
-    delay: delayMin,
-    time: new Date().toISOString(),
-    hadRed: false
-  });
+  console.log("✅ TIMER CANCELLED:", channel);
 
   delete activeTimers[channel];
-
-  console.log(`✅ Таймер скасовано ${channel}`);
 }
 
 module.exports = {

@@ -1,166 +1,131 @@
-const { TelegramClient } = require("telegram");
-const { StringSession } = require("telegram/sessions");
-const { Raw } = require("telegram/events");
+const { sendMessage } = require("./notifier");
+const { getLastLevel, saveLevel, addEvent } = require("./storage");
 
-const config = require("./config");
-const { startTimer, updateLevel, cancelTimer } = require("./watcher");
-const { initDB } = require("./storage");
-const { generateReport } = require("./report");
+const activeTimers = {};
 
-console.log("🚀 START");
+// 🔹 визначення рівня
+function detectLevel(text) {
+  if (!text) return null;
 
-// 🔥 normalize
-const normalize = (str) =>
-  str
-    .toLowerCase()
-    .replace(/#/g, "")
-    .replace(/\./g, "")
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  if (text.includes("🔷")) return "blue";
+  if (text.includes("✅")) return "green";
+  if (text.includes("🟡")) return "yellow";
+  if (text.includes("🚨")) return "red";
 
-(async () => {
-  try {
-    await initDB();
+  return null;
+}
 
-    const client = new TelegramClient(
-      new StringSession(config.session),
-      config.apiId,
-      config.apiHash,
-      { connectionRetries: 5 }
-    );
+// 🔹 оновлення рівня
+async function updateLevel(channel, text) {
+  const level = detectLevel(text);
+  if (!level) return;
 
-    // 🔥 ВАЖЛИВО — як у старому боті
-    await client.connect();
+  console.log("💾 SAVE LEVEL:", channel, level);
 
-    console.log("✅ Connected to Telegram!");
+  await saveLevel(channel, level);
+}
 
-    // 🔐 ініціалізація (щоб не брати старі повідомлення)
-    let lastMessageId = 0;
+// 🔹 старт таймера
+async function startTimer(channel, expectedLevel) {
+  const current = getLastLevel(channel);
 
-    const init = await client.getMessages(config.sourceChannel, { limit: 1 });
-    if (init.length > 0) {
-      lastMessageId = init[0].id;
-      console.log("🔐 Initialized at:", lastMessageId);
-    }
+  console.log("\n🚀 START TIMER");
+  console.log("📍 CHANNEL:", channel);
+  console.log("🎯 EXPECTED:", expectedLevel);
+  console.log("🧠 CURRENT LEVEL:", current);
 
-    // =========================
-    // 🔥 AIR ALERT (СТАБІЛЬНИЙ POLLING)
-    // =========================
-    setInterval(async () => {
-      try {
-        const messages = await client.getMessages(config.sourceChannel, { limit: 10 });
-
-        if (!messages?.length) return;
-
-        const sorted = messages.sort((a, b) => a.id - b.id);
-
-        for (const msg of sorted) {
-          if (!msg.message) continue;
-          if (msg.id <= lastMessageId) continue;
-
-          lastMessageId = msg.id;
-
-          const text = msg.message;
-          const textNorm = normalize(text);
-
-          console.log("\n📡 AIR ALERT:", text);
-
-          const matched = new Set();
-
-          for (const [channel, keywords] of Object.entries(config.regions)) {
-            if (matched.has(channel)) continue;
-
-            const hit = keywords.some(keyword =>
-              textNorm.includes(normalize(keyword))
-            );
-
-            if (!hit) continue;
-
-            matched.add(channel);
-
-            // 🔴 ALERT
-            if (textNorm.includes("повітряна тривога")) {
-              console.log(`🎯 ALERT → ${channel}`);
-              console.log("🚀 START TIMER BLUE:", channel);
-startTimer(channel, "blue");
-            }
-
-            // 🟢 CLEAR (тільки реальний відбій)
-            if (
-              textNorm.includes("відбій") &&
-              textNorm.includes("тривог")
-            ) {
-              console.log(`🎯 CLEAR → ${channel}`);
-              console.log("🚀 START TIMER GREEN:", channel);
-startTimer(channel, "green");
-            }
-          }
-        }
-
-      } catch (err) {
-        console.log("❌ POLLING ERROR:", err.message);
-      }
-    }, 10000);
-
-    // =========================
-    // 🔥 ALERT GROUPS
-    // =========================
-    client.addEventHandler(async (event) => {
-      try {
-        const update = event.originalUpdate;
-        if (!update || !update._) return;
-
-        let msg = null;
-
-        if (update._ === "updateNewChannelMessage") msg = update.message;
-        if (update._ === "updateNewMessage") msg = update.message;
-
-        if (!msg) return;
-
-        const text = msg.message;
-        if (!text) return;
-
-        const chatId = msg.peerId?.channelId?.toString();
-        const channelName = config.channelIds[chatId];
-
-        if (!channelName) return;
-
-        console.log(`🔥 ${channelName}: ${text}`);
-
-        await updateLevel(channelName, text);
-
-        let level = null;
-
-        if (text.includes("🔷")) level = "blue";
-        if (text.includes("✅")) level = "green";
-        if (text.includes("🟡")) level = "yellow";
-        if (text.includes("🚨")) level = "red";
-
-        if (level === "blue" || level === "green") {
-          cancelTimer(channelName, level);
-        }
-
-      } catch (err) {
-        console.log("❌ ERROR:", err.message);
-      }
-    }, new Raw({}));
-
-    // =========================
-    // 📊 REPORTS
-    // =========================
-    setInterval(async () => {
-      const now = new Date();
-      const hours = (now.getUTCHours() + 3) % 24;
-      const minutes = now.getUTCMinutes();
-
-      if ((hours === 8 || hours === 20) && minutes === 55) {
-        await generateReport();
-      }
-
-    }, 60000);
-
-  } catch (err) {
-    console.error("❌ ERROR:", err);
+  if (expectedLevel === "blue" && current === "blue") {
+    console.log("⛔ вже blue — skip");
+    return;
   }
-})();
+
+  if (expectedLevel === "green" && current === "green") {
+    console.log("⛔ вже green — skip");
+    return;
+  }
+
+  if (activeTimers[channel]) {
+    console.log("⛔ таймер вже існує");
+    return;
+  }
+
+  const startTime = Date.now();
+
+  activeTimers[channel] = {
+    timer: setTimeout(async () => {
+      const finalLevel = getLastLevel(channel);
+
+      console.log("\n⏱ TIMER FIRED");
+      console.log("📍 CHANNEL:", channel);
+      console.log("🎯 EXPECTED:", expectedLevel);
+      console.log("🔍 FINAL LEVEL:", finalLevel);
+
+      // 🔷 BLUE
+      if (expectedLevel === "blue") {
+
+        if (finalLevel === "blue") {
+          console.log("✅ BLUE OK — поставлено");
+
+          delete activeTimers[channel];
+          return;
+        }
+
+        console.log("❗ BLUE NOT SET → SEND REMINDER");
+
+        await sendMessage(
+          `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
+        );
+
+        delete activeTimers[channel];
+        return;
+      }
+
+      // ✅ GREEN
+      if (expectedLevel === "green") {
+
+        if (finalLevel === "green") {
+          console.log("✅ GREEN OK — поставлено");
+
+          delete activeTimers[channel];
+          return;
+        }
+
+        console.log("❗ GREEN NOT SET → SEND REMINDER");
+
+        await sendMessage(
+          `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
+        );
+
+        delete activeTimers[channel];
+        return;
+      }
+
+    }, 60000),
+
+    startTime
+  };
+}
+
+// 🔹 скасування таймера
+function cancelTimer(channel, newLevel) {
+  const entry = activeTimers[channel];
+
+  console.log("\n🛑 CANCEL TIMER TRY");
+  console.log("📍 CHANNEL:", channel);
+  console.log("📊 NEW LEVEL:", newLevel);
+  console.log("⏱ HAS TIMER:", !!entry);
+
+  if (!entry) return;
+
+  clearTimeout(entry.timer);
+
+  console.log("✅ TIMER CANCELLED:", channel);
+
+  delete activeTimers[channel];
+}
+
+module.exports = {
+  updateLevel,
+  startTimer,
+  cancelTimer
+};
