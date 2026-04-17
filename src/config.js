@@ -22,15 +22,15 @@ module.exports = {
   },
 
   regions: {
-    "Dnipro Alerts DRC": ["дніпровський район", "дніпровський", "м дніпро", "дніпро"],
-    "Kharkiv Alerts DRC": ["м харків", "харків"],
-    "Kherson Alerts DRC": ["херсонський район", "херсонський"],
-    "Kyiv Alerts DRC": ["м київ", "київ"],
-    "Mykolaiv Alerts DRC": ["миколаївський район", "миколаївський"],
-    "Shostka Alerts DRC": ["шосткинський район", "шостка", "м шостка"],
-    "Slovyansk Alerts DRC": ["краматорський район", "краматорський"],
-    "Sumy Alerts DRC": ["сумський район", "сумський"],
-    "Barvinkove Alerts DRC": ["ізюмський район", "ізюмський"],
+    "Dnipro Alerts DRC": ["дніпровський район"],
+    "Kharkiv Alerts DRC": ["м харків"],
+    "Kherson Alerts DRC": ["херсонський район"],
+    "Kyiv Alerts DRC": ["м київ"],
+    "Mykolaiv Alerts DRC": ["миколаївський район"],
+    "Shostka Alerts DRC": ["шосткинський район"],
+    "Slovyansk Alerts DRC": ["краматорський район"],
+    "Sumy Alerts DRC": ["сумський район"],
+    "Barvinkove Alerts DRC": ["ізюмський район"],
     "Zaporizhzhia Alerts DRC": ["м запоріжжя", "запоріжжя"]
   }
 };

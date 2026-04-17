@@ -2,8 +2,6 @@ const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
 const { Raw } = require("telegram/events");
 
-const { detectType } = require("./parser");
-
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
 const { initDB } = require("./storage");
@@ -11,7 +9,7 @@ const { generateReport } = require("./report");
 
 console.log("🚀 START");
 
-// 🔥 нормалізація
+// 🔥 normalize
 const normalize = (str) =>
   str
     .toLowerCase()
@@ -32,56 +30,67 @@ const normalize = (str) =>
       { connectionRetries: 5 }
     );
 
-    await client.start();
+    // 🔥 ВАЖЛИВО — як у старому боті
+    await client.connect();
 
     console.log("✅ Connected to Telegram!");
-    await client.getDialogs();
 
-    // =========================
-    // 🔥 AIR ALERT (ПРАВИЛЬНИЙ POLLING)
-    // =========================
+    // 🔐 ініціалізація (щоб не брати старі повідомлення)
     let lastMessageId = 0;
 
+    const init = await client.getMessages(config.sourceChannel, { limit: 1 });
+    if (init.length > 0) {
+      lastMessageId = init[0].id;
+      console.log("🔐 Initialized at:", lastMessageId);
+    }
+
+    // =========================
+    // 🔥 AIR ALERT (СТАБІЛЬНИЙ POLLING)
+    // =========================
     setInterval(async () => {
       try {
         const messages = await client.getMessages(config.sourceChannel, { limit: 10 });
 
         if (!messages?.length) return;
 
-        // від старих до нових
         const sorted = messages.sort((a, b) => a.id - b.id);
 
         for (const msg of sorted) {
           if (!msg.message) continue;
-
-          // ❗ пропускаємо вже оброблені
           if (msg.id <= lastMessageId) continue;
 
           lastMessageId = msg.id;
 
           const text = msg.message;
+          const textNorm = normalize(text);
 
           console.log("\n📡 AIR ALERT:", text);
 
-          const type = detectType(text);
-          if (!type) continue;
-
-          const textNorm = normalize(text);
+          const matched = new Set();
 
           for (const [channel, keywords] of Object.entries(config.regions)) {
-            const matchedKeyword = keywords.find(keyword =>
+            if (matched.has(channel)) continue;
+
+            const hit = keywords.some(keyword =>
               textNorm.includes(normalize(keyword))
             );
 
-            if (!matchedKeyword) continue;
+            if (!hit) continue;
 
-            console.log(`🎯 ${matchedKeyword} → ${channel}`);
+            matched.add(channel);
 
-            if (type === "alert") {
+            // 🔴 ALERT
+            if (textNorm.includes("повітряна тривога")) {
+              console.log(`🎯 ALERT → ${channel}`);
               startTimer(channel, "blue");
             }
 
-            if (type === "clear") {
+            // 🟢 CLEAR (тільки реальний відбій)
+            if (
+              textNorm.includes("відбій") &&
+              textNorm.includes("тривог")
+            ) {
+              console.log(`🎯 CLEAR → ${channel}`);
               startTimer(channel, "green");
             }
           }
@@ -93,7 +102,7 @@ const normalize = (str) =>
     }, 10000);
 
     // =========================
-    // 🔥 ALERT GROUPS (приватні канали)
+    // 🔥 ALERT GROUPS
     // =========================
     client.addEventHandler(async (event) => {
       try {
