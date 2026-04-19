@@ -35,6 +35,8 @@ const normalize = (str) =>
     await client.connect();
     console.log("✅ CONNECTED TO TELEGRAM");
 
+    const me = await client.getMe();
+console.log("👤 LOGGED AS:", me.username || me.firstName, me.id);
     // 🔐 INIT MESSAGE ID
     let lastMessageId = 0;
 
