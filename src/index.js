@@ -46,6 +46,18 @@ console.log("👤 LOGGED AS:", me.username || me.firstName, me.id);
       console.log("🔐 INITIALIZED AT:", lastMessageId);
     }
 
+    const dialogs = await client.getDialogs();
+
+console.log("📚 ALL DIALOGS:");
+
+dialogs.forEach(d => {
+  console.log(
+    "TITLE:",
+    d.title,
+    "| ID:",
+    d.id?.toString?.() || d.id
+  );
+});
     // =========================
     // 🔥 AIR ALERT (POLLING)
     // =========================
