@@ -1,6 +1,6 @@
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
-const { Raw } = require("telegram/events");
+const { NewMessage } = require("telegram/events");
 
 const config = require("./config");
 const { startTimer, updateLevel, cancelTimer } = require("./watcher");
@@ -33,37 +33,39 @@ const normalize = (str) =>
 
     console.log("🔌 BEFORE CONNECT...");
     await client.connect();
+
     console.log("✅ CONNECTED TO TELEGRAM");
 
     const me = await client.getMe();
-console.log("👤 LOGGED AS:", me.username || me.firstName, me.id);
-    // 🔐 INIT MESSAGE ID
+    console.log("👤 LOGGED AS:", me.username || me.firstName, me.id);
+
+    // 🔐 INIT
     let lastMessageId = 0;
 
     const init = await client.getMessages(config.sourceChannel, { limit: 1 });
+
     if (init.length > 0) {
       lastMessageId = init[0].id;
       console.log("🔐 INITIALIZED AT:", lastMessageId);
     }
 
+    // 🔍 dialogs
     const dialogs = await client.getDialogs();
 
-console.log("📚 ALL DIALOGS:");
+    console.log("📚 ALL DIALOGS:");
 
-dialogs.forEach(d => {
-  console.log(
-    "TITLE:",
-    d.title,
-    "| ID:",
-    d.id?.toString?.() || d.id
-  );
-});
+    dialogs.forEach((d) => {
+      console.log("TITLE:", d.title, "| ID:", d.id?.toString?.() || d.id);
+    });
+
     // =========================
-    // 🔥 AIR ALERT (POLLING)
+    // 🔥 AIR ALERT POLLING
     // =========================
     setInterval(async () => {
       try {
-        const messages = await client.getMessages(config.sourceChannel, { limit: 10 });
+        const messages = await client.getMessages(config.sourceChannel, {
+          limit: 10
+        });
 
         if (!messages?.length) return;
 
@@ -86,7 +88,7 @@ dialogs.forEach(d => {
           for (const [channel, keywords] of Object.entries(config.regions)) {
             if (matched.has(channel)) continue;
 
-            const hit = keywords.some(keyword =>
+            const hit = keywords.some((keyword) =>
               textNorm.includes(normalize(keyword))
             );
 
@@ -97,7 +99,6 @@ dialogs.forEach(d => {
             // 🔴 ALERT
             if (textNorm.includes("повітряна тривога")) {
               console.log(`🎯 ALERT → ${channel}`);
-              console.log("🚀 START TIMER BLUE:", channel);
               startTimer(channel, "blue");
             }
 
@@ -107,36 +108,26 @@ dialogs.forEach(d => {
               textNorm.includes("тривог")
             ) {
               console.log(`🎯 CLEAR → ${channel}`);
-              console.log("🚀 START TIMER GREEN:", channel);
               startTimer(channel, "green");
             }
           }
         }
-
       } catch (err) {
         console.log("❌ POLLING ERROR:", err.message);
       }
     }, 10000);
 
     // =========================
-    // 🔥 ALERT GROUPS
+    // 🔥 PRIVATE CHANNELS / GROUPS
     // =========================
     client.addEventHandler(async (event) => {
       try {
-        const update = event.originalUpdate;
-        if (!update || !update._) return;
-
-        let msg = null;
-
-        if (update._ === "updateNewChannelMessage") msg = update.message;
-        if (update._ === "updateNewMessage") msg = update.message;
-
+        const msg = event.message;
         if (!msg) return;
 
         const text = msg.message;
         if (!text) return;
 
-        // 🔥 ВИЗНАЧЕННЯ CHAT ID
         let chatId = null;
 
         if (msg.peerId?.channelId) {
@@ -154,13 +145,12 @@ dialogs.forEach(d => {
         const channelName = config.channelIds[chatId];
 
         if (!channelName) {
-          console.log("⚠️ UNKNOWN CHANNEL (немає в config)");
+          console.log("⚠️ UNKNOWN CHANNEL");
           return;
         }
 
         console.log("🎯 MATCHED CHANNEL:", channelName);
 
-        // 🔥 UPDATE LEVEL
         await updateLevel(channelName, text);
 
         let level = null;
@@ -172,16 +162,13 @@ dialogs.forEach(d => {
 
         console.log("📊 DETECTED LEVEL:", level);
 
-        // 🔥 CANCEL TIMER
         if (level === "blue" || level === "green") {
-          console.log("🛑 TRY CANCEL TIMER:", channelName, level);
           cancelTimer(channelName, level);
         }
-
       } catch (err) {
-        console.log("❌ ERROR:", err.message);
+        console.log("❌ GROUP HANDLER ERROR:", err.message);
       }
-    }, new Raw({}));
+    }, new NewMessage({}));
 
     // =========================
     // 📊 REPORTS
@@ -196,7 +183,6 @@ dialogs.forEach(d => {
         console.log("📊 GENERATE REPORT");
         await generateReport();
       }
-
     }, 60000);
 
   } catch (err) {
