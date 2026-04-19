@@ -9,7 +9,6 @@ const { generateReport } = require("./report");
 
 console.log("🚀 START FILE");
 
-// 🔹 normalize
 const normalize = (str) =>
   str
     .toLowerCase()
@@ -39,7 +38,6 @@ const normalize = (str) =>
     const me = await client.getMe();
     console.log("👤 LOGGED AS:", me.username || me.firstName, me.id);
 
-    // 🔐 INIT
     let lastMessageId = 0;
 
     const init = await client.getMessages(config.sourceChannel, { limit: 1 });
@@ -49,7 +47,6 @@ const normalize = (str) =>
       console.log("🔐 INITIALIZED AT:", lastMessageId);
     }
 
-    // 🔍 dialogs
     const dialogs = await client.getDialogs();
 
     console.log("📚 ALL DIALOGS:");
@@ -59,7 +56,7 @@ const normalize = (str) =>
     });
 
     // =========================
-    // 🔥 AIR ALERT POLLING
+    // AIR ALERT POLLING
     // =========================
     setInterval(async () => {
       try {
@@ -96,13 +93,11 @@ const normalize = (str) =>
 
             matched.add(channel);
 
-            // 🔴 ALERT
             if (textNorm.includes("повітряна тривога")) {
               console.log(`🎯 ALERT → ${channel}`);
               startTimer(channel, "blue");
             }
 
-            // 🟢 CLEAR
             if (
               textNorm.includes("відбій") &&
               textNorm.includes("тривог")
@@ -118,7 +113,7 @@ const normalize = (str) =>
     }, 10000);
 
     // =========================
-    // 🔥 PRIVATE CHANNELS / GROUPS
+    // PRIVATE CHANNELS
     // =========================
     client.addEventHandler(async (event) => {
       try {
@@ -131,7 +126,7 @@ const normalize = (str) =>
         let chatId = null;
 
         if (msg.peerId?.channelId) {
-          chatId = "-100" + msg.peerId.channelId.toString();
+          chatId = msg.peerId.channelId.toString();
         }
 
         if (msg.peerId?.chatId) {
@@ -171,7 +166,7 @@ const normalize = (str) =>
     }, new NewMessage({}));
 
     // =========================
-    // 📊 REPORTS
+    // REPORTS
     // =========================
     setInterval(async () => {
       const now = new Date();
