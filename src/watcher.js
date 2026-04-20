@@ -1,9 +1,12 @@
 const { sendMessage } = require("./notifier");
-const { getLastLevel, saveLevel } = require("./storage");
+const { getLastLevel, saveLevel, addEvent } = require("./storage");
 
 const activeTimers = {};
+const TIMER_MS = 60000;
 
-// 🔹 визначення рівня
+// -------------------------
+// detect level
+// -------------------------
 function detectLevel(text) {
   if (!text) return null;
 
@@ -15,7 +18,9 @@ function detectLevel(text) {
   return null;
 }
 
-// 🔹 оновлення рівня
+// -------------------------
+// update level from channel
+// -------------------------
 async function updateLevel(channel, text) {
   const level = detectLevel(text);
   if (!level) return;
@@ -25,112 +30,126 @@ async function updateLevel(channel, text) {
   await saveLevel(channel, level);
 }
 
-// 🔹 старт таймера
+// -------------------------
+// start timer
+// -------------------------
 async function startTimer(channel, expectedLevel) {
   const current = getLastLevel(channel);
 
   console.log("\n🚀 START TIMER");
   console.log("📍 CHANNEL:", channel);
   console.log("🎯 EXPECTED:", expectedLevel);
-  console.log("🧠 CURRENT LEVEL:", current);
+  console.log("🧠 CURRENT:", current);
 
-  // =========================
-  // 🔷 BLUE reminder потрібен
-  // тільки якщо ДО цього був green
-  // =========================
-  if (expectedLevel === "blue" && current !== "green") {
-    console.log("⛔ skip blue — already active alert");
-    return;
-  }
-
-  // =========================
-  // ✅ GREEN reminder не треба
-  // якщо вже green
-  // =========================
-  if (expectedLevel === "green" && current === "green") {
-    console.log("⛔ вже green — skip");
-    return;
-  }
-
-  // вже існує таймер
+  // remove old timer
   if (activeTimers[channel]) {
-    console.log("⛔ таймер вже існує");
+    clearTimeout(activeTimers[channel].timer);
+    delete activeTimers[channel];
+  }
+
+  // ======================
+  // BLUE logic
+  // reminder only if was green
+  // ======================
+  if (expectedLevel === "blue" && current !== "green") {
+    console.log("⛔ BLUE skip — alert already active");
     return;
   }
+
+  // ======================
+  // GREEN logic
+  // always check after clear
+  // ======================
+
+  const startedAt = Date.now();
 
   activeTimers[channel] = {
+    expectedLevel,
+    startedAt,
+
     timer: setTimeout(async () => {
       const finalLevel = getLastLevel(channel);
 
       console.log("\n⏱ TIMER FIRED");
       console.log("📍 CHANNEL:", channel);
       console.log("🎯 EXPECTED:", expectedLevel);
-      console.log("🔍 FINAL LEVEL:", finalLevel);
+      console.log("🔍 FINAL:", finalLevel);
 
-      // =========================
-      // 🔷 BLUE
-      // =========================
+      // ======================
+      // BLUE expected
+      // ======================
       if (expectedLevel === "blue") {
         if (
           finalLevel === "blue" ||
           finalLevel === "yellow" ||
           finalLevel === "red"
         ) {
-          console.log("✅ BLUE OK / already active");
+          await addEvent({
+            channel,
+            type: "blue",
+            status: "on_time",
+            time: startedAt
+          });
 
           delete activeTimers[channel];
           return;
         }
-
-        console.log("❗ BLUE NOT SET → SEND REMINDER");
 
         await sendMessage(
           `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
         );
 
+        await addEvent({
+          channel,
+          type: "blue",
+          status: "not_set",
+          time: startedAt,
+          hadRed: false
+        });
+
         delete activeTimers[channel];
         return;
       }
 
-      // =========================
-      // ✅ GREEN
-      // =========================
+      // ======================
+      // GREEN expected
+      // ======================
       if (expectedLevel === "green") {
         if (finalLevel === "green") {
-          console.log("✅ GREEN OK — поставлено");
+          await addEvent({
+            channel,
+            type: "green",
+            status: "on_time",
+            time: startedAt
+          });
 
           delete activeTimers[channel];
           return;
         }
-
-        // якщо вже нова тривога активна
-        if (
-          finalLevel === "blue" ||
-          finalLevel === "yellow" ||
-          finalLevel === "red"
-        ) {
-          console.log("ℹ️ skip green reminder — нова тривога активна");
-
-          delete activeTimers[channel];
-          return;
-        }
-
-        console.log("❗ GREEN NOT SET → SEND REMINDER");
 
         await sendMessage(
           `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
         );
 
+        await addEvent({
+          channel,
+          type: "green",
+          status: "not_set",
+          time: startedAt,
+          hadRed: finalLevel === "red"
+        });
+
         delete activeTimers[channel];
-        return;
       }
 
-    }, 60000)
+    }, TIMER_MS)
   };
 }
 
-// 🔹 скасування таймера
-function cancelTimer(channel, newLevel) {
+// -------------------------
+// cancel timer when level updated
+// -------------------------
+async function cancelTimer(channel, newLevel) {
   const entry = activeTimers[channel];
 
   console.log("\n🛑 CANCEL TIMER TRY");
@@ -141,6 +160,22 @@ function cancelTimer(channel, newLevel) {
   if (!entry) return;
 
   clearTimeout(entry.timer);
+
+  const delay = Math.round((Date.now() - entry.startedAt) / 60000);
+
+  // correct level placed
+  if (
+    (entry.expectedLevel === "blue" && newLevel === "blue") ||
+    (entry.expectedLevel === "green" && newLevel === "green")
+  ) {
+    await addEvent({
+      channel,
+      type: entry.expectedLevel,
+      status: delay === 0 ? "on_time" : "late",
+      delay,
+      time: entry.startedAt
+    });
+  }
 
   console.log("✅ TIMER CANCELLED:", channel);
 
