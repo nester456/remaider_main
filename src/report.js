@@ -1,39 +1,80 @@
+// src/report.js
+
 const { db } = require("./storage");
 const { sendMessage } = require("./notifier");
-const dayjs = require("dayjs");
 
-function formatTime(t) {
-  return dayjs(t).format("HH:mm");
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+// ------------------------------------
+// Kyiv time
+// ------------------------------------
+function formatTime(ts) {
+  return dayjs(ts).tz("Europe/Kyiv").format("HH:mm");
 }
 
+// ------------------------------------
+// render one event
+// ------------------------------------
 function renderEvent(e) {
-  // ❌ не поставлено
-  if (e.status === "not_set") {
-    if (e.hadRed) {
-      return `– о ${formatTime(e.time)} ❌ рівень не було поставлено, але в цей час в групі був 🚨 червоний рівень`;
+  // =========================
+  // BLUE
+  // =========================
+  if (e.type === "blue") {
+    if (e.status === "late") {
+      return `– о ${formatTime(e.time)} на ${e.delay} хв`;
     }
 
-    return `– о ${formatTime(e.time)} ❌ рівень не було поставлено`;
+    if (e.status === "not_set") {
+      return `– о ${formatTime(e.time)} ❌ синій рівень не було поставлено`;
+    }
   }
 
-  // ⏱ із затримкою
-  if (e.status === "late") {
-    if (e.hadRed) {
-      return `– о ${formatTime(e.time)} на ${e.delay} хв, але в цей час в групі був 🚨 червоний рівень`;
+  // =========================
+  // GREEN
+  // =========================
+  if (e.type === "green") {
+    if (e.status === "late") {
+      if (e.hadRed) {
+        return `– о ${formatTime(e.time)} на ${e.delay} хв, але в момент відбою в групі був 🚨 червоний рівень`;
+      }
+
+      if (e.hadYellow) {
+        return `– о ${formatTime(e.time)} на ${e.delay} хв, але в момент відбою в групі був 🟡 жовтий рівень`;
+      }
+
+      return `– о ${formatTime(e.time)} на ${e.delay} хв`;
     }
 
-    return `– о ${formatTime(e.time)} на ${e.delay} хв`;
+    if (e.status === "not_set") {
+      if (e.hadRed) {
+        return `– о ${formatTime(e.time)} ❌ зелений рівень не було поставлено, а в момент відбою був 🚨 червоний рівень`;
+      }
+
+      if (e.hadYellow) {
+        return `– о ${formatTime(e.time)} ❌ зелений рівень не було поставлено, а в момент відбою був 🟡 жовтий рівень`;
+      }
+
+      return `– о ${formatTime(e.time)} ❌ зелений рівень не було поставлено`;
+    }
   }
 
   return null;
 }
 
+// ------------------------------------
+// main report
+// ------------------------------------
 async function generateReport() {
   await db.read();
 
   const events = db.data.events || [];
 
-  // Беремо лише проблемні кейси
+  // only issues
   const filtered = events.filter(
     (e) => e.status === "late" || e.status === "not_set"
   );
@@ -65,7 +106,7 @@ async function generateReport() {
   let report = "📊 Підсумок за останню зміну:\n\n";
 
   for (const [channel, data] of Object.entries(grouped)) {
-    // 🔷 BLUE BLOCK
+    // BLUE
     if (data.blue.length) {
       report += `🔷 ${channel}: затримка синього:\n`;
 
@@ -77,7 +118,7 @@ async function generateReport() {
       report += "\n";
     }
 
-    // ✅ GREEN BLOCK
+    // GREEN
     if (data.green.length) {
       report += `✅ ${channel}: затримка зеленого:\n`;
 
@@ -92,7 +133,7 @@ async function generateReport() {
 
   await sendMessage(report.trim());
 
-  // очищаємо після звіту
+  // clear after report
   db.data.events = [];
   await db.write();
 }

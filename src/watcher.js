@@ -1,12 +1,29 @@
+// src/watcher.js
+
 const { sendMessage } = require("./notifier");
 const { getLastLevel, saveLevel, addEvent } = require("./storage");
 
-const activeTimers = {};
-const TIMER_MS = 60000;
+const REMINDER_MS = 60000;
 
-// ----------------------------------
-// detect level
-// ----------------------------------
+// active reminder timers
+const activeTimers = {};
+
+// pending cycle states
+const pending = {};
+
+// telegram hooks from index.js
+let fetchLatestLevelFn = null;
+
+// ------------------------------------
+// inject function from index.js
+// ------------------------------------
+function setFetchLatestLevel(fn) {
+  fetchLatestLevelFn = fn;
+}
+
+// ------------------------------------
+// helpers
+// ------------------------------------
 function detectLevel(text) {
   if (!text) return null;
 
@@ -18,188 +35,198 @@ function detectLevel(text) {
   return null;
 }
 
-// ----------------------------------
-// normalize active states
-// ----------------------------------
-function isAlertActive(level) {
+function isAlert(level) {
   return level === "blue" || level === "yellow" || level === "red";
 }
 
-// ----------------------------------
-// update level from private channel
-// ----------------------------------
+function now() {
+  return Date.now();
+}
+
+// ------------------------------------
+// live check latest level from channel
+// ------------------------------------
+async function getRealLevel(channel) {
+  let current = getLastLevel(channel);
+
+  if (current !== null) return current;
+
+  if (!fetchLatestLevelFn) return null;
+
+  try {
+    const liveText = await fetchLatestLevelFn(channel);
+    const liveLevel = detectLevel(liveText);
+
+    if (liveLevel) {
+      await saveLevel(channel, liveLevel);
+      return liveLevel;
+    }
+  } catch (err) {
+    console.log("⚠️ LIVE CHECK ERROR:", channel, err.message);
+  }
+
+  return null;
+}
+
+// ------------------------------------
+// save level from private channels
+// ------------------------------------
 async function updateLevel(channel, text) {
   const level = detectLevel(text);
   if (!level) return;
 
-  console.log("💾 SAVE LEVEL:", channel, level);
-
   await saveLevel(channel, level);
+
+  const p = pending[channel];
+  if (!p) return;
+
+  // waiting BLUE
+  if (p.expected === "blue" && level === "blue") {
+    const delay = Math.round((now() - p.startedAt) / 60000);
+
+    await addEvent({
+      channel,
+      type: "blue",
+      status: delay === 0 ? "on_time" : "late",
+      delay,
+      time: p.startedAt
+    });
+
+    delete pending[channel];
+  }
+
+  // waiting GREEN
+  if (p.expected === "green" && level === "green") {
+    const delay = Math.round((now() - p.startedAt) / 60000);
+
+    await addEvent({
+      channel,
+      type: "green",
+      status: delay === 0 ? "on_time" : "late",
+      delay,
+      time: p.startedAt,
+      hadRed: p.levelAtReminder === "red",
+      hadYellow: p.levelAtReminder === "yellow"
+    });
+
+    delete pending[channel];
+  }
 }
 
-// ----------------------------------
-// start timer
-// ----------------------------------
+// ------------------------------------
+// start by AIR ALERT signal
+// ------------------------------------
 async function startTimer(channel, expectedLevel) {
-  let current = getLastLevel(channel);
+  const current = await getRealLevel(channel);
 
-  console.log("\n🚀 START TIMER");
-  console.log("📍 CHANNEL:", channel);
-  console.log("🎯 EXPECTED:", expectedLevel);
-  console.log("🧠 CURRENT:", current);
+  console.log("🚀 START TIMER:", channel, expectedLevel, current);
 
-  // remove old timer
   if (activeTimers[channel]) {
-    clearTimeout(activeTimers[channel].timer);
+    clearTimeout(activeTimers[channel]);
     delete activeTimers[channel];
   }
 
-  // ==================================
-  // BLUE expected after alert
-  // reminder only if current = green/null
-  // ==================================
+  // new ALERT closes old GREEN
   if (expectedLevel === "blue") {
-    if (isAlertActive(current)) {
-      console.log("⛔ BLUE skip — alert already active");
+    const old = pending[channel];
+
+    if (old && old.expected === "green") {
+      await addEvent({
+        channel,
+        type: "green",
+        status: "not_set",
+        time: old.startedAt,
+        hadRed: old.levelAtReminder === "red",
+        hadYellow: old.levelAtReminder === "yellow"
+      });
+
+      delete pending[channel];
+    }
+
+    if (isAlert(current)) {
+      console.log("⛔ BLUE skip live-check active");
       return;
     }
+
+    pending[channel] = {
+      expected: "blue",
+      startedAt: now(),
+      reminderAt: null
+    };
   }
 
-  // ==================================
-  // GREEN expected after clear
-  // reminder if current != green
-  // ==================================
+  // new CLEAR closes old BLUE
   if (expectedLevel === "green") {
+    const old = pending[channel];
+
+    if (old && old.expected === "blue") {
+      await addEvent({
+        channel,
+        type: "blue",
+        status: "not_set",
+        time: old.startedAt
+      });
+
+      delete pending[channel];
+    }
+
     if (current === "green") {
-      console.log("⛔ GREEN skip — already green");
+      console.log("⛔ GREEN skip live-check green");
       return;
     }
+
+    pending[channel] = {
+      expected: "green",
+      startedAt: now(),
+      reminderAt: null,
+      levelAtReminder: null
+    };
   }
 
-  const startedAt = Date.now();
+  // ------------------------------------
+  // reminder timer
+  // ------------------------------------
+  activeTimers[channel] = setTimeout(async () => {
+    const p = pending[channel];
+    if (!p) return;
 
-  activeTimers[channel] = {
-    expectedLevel,
-    startedAt,
+    const latest = await getRealLevel(channel);
 
-    timer: setTimeout(async () => {
-      const finalLevel = getLastLevel(channel);
-
-      console.log("\n⏱ TIMER FIRED");
-      console.log("📍 CHANNEL:", channel);
-      console.log("🎯 EXPECTED:", expectedLevel);
-      console.log("🔍 FINAL:", finalLevel);
-
-      // ==================================
-      // BLUE reminder
-      // ==================================
-      if (expectedLevel === "blue") {
-        if (isAlertActive(finalLevel)) {
-          console.log("✅ BLUE OK");
-
-          await addEvent({
-            channel,
-            type: "blue",
-            status: "on_time",
-            time: startedAt
-          });
-
-          delete activeTimers[channel];
-          return;
-        }
-
+    // BLUE reminder
+    if (p.expected === "blue") {
+      if (latest !== "blue") {
         await sendMessage(
           `❗❗❗ Увага, ви не поставили 🔷 *синій* рівень тривоги в ${channel}`
         );
-
-        await addEvent({
-          channel,
-          type: "blue",
-          status: "not_set",
-          time: startedAt,
-          hadRed: false
-        });
-
-        delete activeTimers[channel];
-        return;
       }
 
-      // ==================================
-      // GREEN reminder
-      // ==================================
-      if (expectedLevel === "green") {
-        if (finalLevel === "green") {
-          console.log("✅ GREEN OK");
+      p.reminderAt = now();
+    }
 
-          await addEvent({
-            channel,
-            type: "green",
-            status: "on_time",
-            time: startedAt
-          });
-
-          delete activeTimers[channel];
-          return;
-        }
-
+    // GREEN reminder
+    if (p.expected === "green") {
+      if (latest !== "green") {
         await sendMessage(
           `❗❗❗ Увага, ви не поставили ✅ *зелений* рівень тривоги в ${channel}`
         );
-
-        await addEvent({
-          channel,
-          type: "green",
-          status: "not_set",
-          time: startedAt,
-          hadRed: finalLevel === "red"
-        });
-
-        delete activeTimers[channel];
-        return;
       }
 
-    }, TIMER_MS)
-  };
+      p.reminderAt = now();
+      p.levelAtReminder = latest;
+    }
+
+    delete activeTimers[channel];
+  }, REMINDER_MS);
 }
 
-// ----------------------------------
-// cancel timer when correct level set
-// ----------------------------------
-async function cancelTimer(channel, newLevel) {
-  const entry = activeTimers[channel];
-
-  console.log("\n🛑 CANCEL TIMER TRY");
-  console.log("📍 CHANNEL:", channel);
-  console.log("📊 NEW LEVEL:", newLevel);
-  console.log("⏱ HAS TIMER:", !!entry);
-
-  if (!entry) return;
-
-  clearTimeout(entry.timer);
-
-  const delay = Math.round((Date.now() - entry.startedAt) / 60000);
-
-  if (
-    (entry.expectedLevel === "blue" && isAlertActive(newLevel)) ||
-    (entry.expectedLevel === "green" && newLevel === "green")
-  ) {
-    await addEvent({
-      channel,
-      type: entry.expectedLevel,
-      status: delay === 0 ? "on_time" : "late",
-      delay,
-      time: entry.startedAt,
-      hadRed: newLevel === "red"
-    });
-  }
-
-  console.log("✅ TIMER CANCELLED:", channel);
-
-  delete activeTimers[channel];
+// compatibility
+function cancelTimer() {
+  return;
 }
 
 module.exports = {
   updateLevel,
   startTimer,
-  cancelTimer
+  cancelTimer,
+  setFetchLatestLevel
 };

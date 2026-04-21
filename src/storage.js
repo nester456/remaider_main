@@ -10,21 +10,32 @@ const db = new Low(adapter, {
 
 async function initDB() {
   await db.read();
-  db.data ||= { events: [], lastLevels: {} };
+
+  db.data ||= {
+    events: [],
+    lastLevels: {}
+  };
+
   await db.write();
 }
 
 async function saveLevel(channel, level) {
+  await db.read();
+
   db.data.lastLevels[channel] = level;
+
   await db.write();
 }
 
 function getLastLevel(channel) {
-  return db.data.lastLevels[channel] || null;
+  return db.data.lastLevels[channel] ?? null;
 }
 
 async function addEvent(event) {
+  await db.read();
+
   db.data.events.push(event);
+
   await db.write();
 }
 
