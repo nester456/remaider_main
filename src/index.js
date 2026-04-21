@@ -19,16 +19,31 @@ const { generateReport } = require("./report");
 console.log("🚀 START FILE");
 
 // ------------------------------------
-// normalize text
+// normalize
 // ------------------------------------
-const normalize = (str) =>
-  str
+function normalize(text) {
+  return (text || "")
     .toLowerCase()
     .replace(/#/g, "")
     .replace(/\./g, "")
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// ------------------------------------
+// level detect with priority
+// ------------------------------------
+function detectLevel(text) {
+  if (!text) return null;
+
+  if (text.includes("🚨")) return "red";
+  if (text.includes("🟡")) return "yellow";
+  if (text.includes("🔷")) return "blue";
+  if (text.includes("✅")) return "green";
+
+  return null;
+}
 
 // ------------------------------------
 // main
@@ -51,25 +66,45 @@ const normalize = (str) =>
     console.log("✅ CONNECTED TO TELEGRAM");
 
     // ------------------------------------
-    // LIVE CHECK FOR WATCHER
+    // watcher live-check hook
     // ------------------------------------
     setFetchLatestLevel(async (channelName) => {
       const chatId = Object.keys(config.channelIds).find(
         (id) => config.channelIds[id] === channelName
       );
 
-      if (!chatId) return null;
+      if (!chatId) {
+        console.log("⚠️ LIVE CHECK NO CHAT:", channelName);
+        return null;
+      }
 
       try {
         const msgs = await client.getMessages(chatId, {
           limit: 1
         });
 
-        if (!msgs.length) return null;
+        if (!msgs.length) {
+          console.log("⚠️ LIVE CHECK EMPTY:", channelName);
+          return null;
+        }
 
-        return msgs[0].message || "";
+        const text = msgs[0].message || "";
+
+        console.log(
+          "🔍 LIVE CHECK:",
+          channelName,
+          "→",
+          text.replace(/\n/g, " ").slice(0, 80)
+        );
+
+        return text;
       } catch (err) {
-        console.log("⚠️ LIVE FETCH ERROR:", channelName, err.message);
+        console.log(
+          "⚠️ LIVE FETCH ERROR:",
+          channelName,
+          err.message
+        );
+
         return null;
       }
     });
@@ -83,7 +118,7 @@ const normalize = (str) =>
     );
 
     // ------------------------------------
-    // init source channel pointer
+    // init source pointer
     // ------------------------------------
     let lastMessageId = 0;
 
@@ -98,7 +133,7 @@ const normalize = (str) =>
     }
 
     // ------------------------------------
-    // show dialogs
+    // dialogs
     // ------------------------------------
     const dialogs = await client.getDialogs();
 
@@ -114,7 +149,7 @@ const normalize = (str) =>
     });
 
     // ====================================
-    // AIR ALERT POLLING
+    // PUBLIC ALERT SOURCE POLLING
     // ====================================
     setInterval(async () => {
       try {
@@ -149,45 +184,37 @@ const normalize = (str) =>
             if (matched.has(channel)) continue;
 
             const hit = keywords.some((keyword) =>
-              textNorm.includes(
-                normalize(keyword)
-              )
+              textNorm.includes(normalize(keyword))
             );
 
             if (!hit) continue;
 
             matched.add(channel);
 
-            // ALERT
-            if (
-              textNorm.includes(
-                "повітряна тривога"
-              )
-            ) {
-              console.log(
-                `🎯 ALERT → ${channel}`
-              );
+            // alert
+            if (textNorm.includes("повітряна тривога")) {
+              console.log("🎯 ALERT →", channel);
 
-              await startTimer(
+              await startTimer(channel, "blue");
+
+              console.log(
+                "📝 START TIMER REQUEST SAVED:",
                 channel,
                 "blue"
               );
             }
 
-            // CLEAR
+            // clear
             if (
-              textNorm.includes(
-                "відбій"
-              ) &&
-              textNorm.includes(
-                "тривог"
-              )
+              textNorm.includes("відбій") &&
+              textNorm.includes("тривог")
             ) {
-              console.log(
-                `🎯 CLEAR → ${channel}`
-              );
+              console.log("🎯 CLEAR →", channel);
 
-              await startTimer(
+              await startTimer(channel, "green");
+
+              console.log(
+                "📝 START TIMER REQUEST SAVED:",
                 channel,
                 "green"
               );
@@ -195,10 +222,7 @@ const normalize = (str) =>
           }
         }
       } catch (err) {
-        console.log(
-          "❌ POLLING ERROR:",
-          err.message
-        );
+        console.log("❌ POLLING ERROR:", err.message);
       }
     }, 10000);
 
@@ -209,42 +233,29 @@ const normalize = (str) =>
       async (event) => {
         try {
           const msg = event.message;
-          if (!msg) return;
+          if (!msg?.message) return;
 
           const text = msg.message;
-          if (!text) return;
 
           let chatId = null;
 
           if (msg.peerId?.channelId) {
-            chatId =
-              msg.peerId.channelId.toString();
+            chatId = msg.peerId.channelId.toString();
           }
 
           if (msg.peerId?.chatId) {
-            chatId =
-              msg.peerId.chatId.toString();
+            chatId = msg.peerId.chatId.toString();
           }
 
-          console.log(
-            "\n📩 NEW GROUP MESSAGE"
-          );
-          console.log(
-            "📩 CHAT ID:",
-            chatId
-          );
-          console.log(
-            "💬 TEXT:",
-            text
-          );
+          console.log("\n📩 NEW GROUP MESSAGE");
+          console.log("📩 CHAT ID:", chatId);
+          console.log("💬 TEXT:", text);
 
           const channelName =
             config.channelIds[chatId];
 
           if (!channelName) {
-            console.log(
-              "⚠️ UNKNOWN CHANNEL"
-            );
+            console.log("⚠️ UNKNOWN CHANNEL");
             return;
           }
 
@@ -253,32 +264,34 @@ const normalize = (str) =>
             channelName
           );
 
-          await updateLevel(
-            channelName,
-            text
+          // save level in DB
+          await updateLevel(channelName, text);
+
+          console.log(
+            "📝 LEVEL UPDATE SAVED:",
+            channelName
           );
 
-          let level = null;
-
-          if (text.includes("🔷"))
-            level = "blue";
-
-          if (text.includes("✅"))
-            level = "green";
-
-          if (text.includes("🟡"))
-            level = "yellow";
-
-          if (text.includes("🚨"))
-            level = "red";
+          // detect level
+          const level = detectLevel(text);
 
           console.log(
             "📊 DETECTED LEVEL:",
             level
           );
 
+          // cancel active timer
           if (level) {
-            cancelTimer(
+            console.log(
+              "🛑 CANCEL REQUEST:",
+              channelName,
+              level
+            );
+
+            cancelTimer(channelName, level);
+
+            console.log(
+              "📝 CANCEL REQUEST DONE:",
               channelName,
               level
             );
@@ -295,43 +308,33 @@ const normalize = (str) =>
 
     // ====================================
     // REPORTS
-    // 08:55 / 20:55 Kyiv
     // ====================================
     setInterval(async () => {
       try {
-        const now =
-          new Date();
+        const now = new Date();
 
         const kyivHour =
-          (now.getUTCHours() + 3) %
-          24;
+          (now.getUTCHours() + 3) % 24;
 
-        const min =
-          now.getUTCMinutes();
+        const min = now.getUTCMinutes();
 
         if (
           (kyivHour === 8 ||
             kyivHour === 20) &&
           min === 55
         ) {
-          console.log(
-            "📊 GENERATE REPORT"
-          );
+          console.log("📊 GENERATE REPORT");
 
           await generateReport();
+
+          console.log("📝 REPORT SENT");
         }
       } catch (err) {
-        console.log(
-          "❌ REPORT ERROR:",
-          err.message
-        );
+        console.log("❌ REPORT ERROR:", err.message);
       }
     }, 60000);
 
   } catch (err) {
-    console.error(
-      "❌ GLOBAL ERROR:",
-      err
-    );
+    console.log("❌ GLOBAL ERROR:", err);
   }
 })();
