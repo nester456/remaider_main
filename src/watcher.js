@@ -4,6 +4,7 @@ const { sendMessage } = require("./notifier");
 const { getLastLevel, saveLevel, addEvent } = require("./storage");
 
 const REMINDER_MS = 60000;
+const FAST_SWITCH_MS = 90000; // 90 sec ignore rapid reversals
 
 const activeTimers = {};
 const pending = {};
@@ -28,7 +29,6 @@ function isAlert(level) {
   return level === "blue" || level === "yellow" || level === "red";
 }
 
-// IMPORTANT: priority order
 function detectLevel(text) {
   if (!text) return null;
 
@@ -41,7 +41,7 @@ function detectLevel(text) {
 }
 
 // ------------------------------------
-// live read last message from channel
+// live channel check
 // ------------------------------------
 async function getRealLevel(channel) {
   const saved = getLastLevel(channel);
@@ -79,7 +79,9 @@ async function updateLevel(channel, text) {
   const p = pending[channel];
   if (!p) return;
 
-  // waiting blue
+  // -----------------------------
+  // waiting BLUE
+  // -----------------------------
   if (p.expected === "blue" && level === "blue") {
     const delay = Math.round(
       (now() - p.startedAt) / 60000
@@ -98,7 +100,9 @@ async function updateLevel(channel, text) {
     delete pending[channel];
   }
 
-  // waiting green
+  // -----------------------------
+  // waiting GREEN
+  // -----------------------------
   if (p.expected === "green" && level === "green") {
     const delay = Math.round(
       (now() - p.startedAt) / 60000
@@ -121,7 +125,7 @@ async function updateLevel(channel, text) {
 }
 
 // ------------------------------------
-// start from public alert feed
+// start by public alerts
 // ------------------------------------
 async function startTimer(channel, expectedLevel) {
   const current = await getRealLevel(channel);
@@ -133,29 +137,43 @@ async function startTimer(channel, expectedLevel) {
     current
   );
 
-  // remove previous timer
   if (activeTimers[channel]) {
     clearTimeout(activeTimers[channel]);
     delete activeTimers[channel];
   }
 
   // ==================================
-  // BLUE request
+  // BLUE REQUEST
   // ==================================
   if (expectedLevel === "blue") {
     const old = pending[channel];
 
-    // close old green cycle
+    // close old green pending
     if (old && old.expected === "green") {
-      await addEvent({
-        channel,
-        type: "green",
-        status: "not_set",
-        time: old.startedAt,
-        hadRed: old.levelAtReminder === "red",
-        hadYellow:
-          old.levelAtReminder === "yellow"
-      });
+      const age = now() - old.startedAt;
+
+      if (age >= FAST_SWITCH_MS) {
+        await addEvent({
+          channel,
+          type: "green",
+          status: "not_set",
+          time: old.startedAt,
+          hadRed: old.levelAtReminder === "red",
+          hadYellow:
+            old.levelAtReminder === "yellow"
+        });
+
+        console.log(
+          "❌ GREEN NOT SET:",
+          channel
+        );
+      } else {
+        console.log(
+          "⚡ FAST SWITCH GREEN IGNORED:",
+          channel,
+          age
+        );
+      }
 
       delete pending[channel];
     }
@@ -176,19 +194,34 @@ async function startTimer(channel, expectedLevel) {
   }
 
   // ==================================
-  // GREEN request
+  // GREEN REQUEST
   // ==================================
   if (expectedLevel === "green") {
     const old = pending[channel];
 
-    // close old blue cycle
+    // close old blue pending
     if (old && old.expected === "blue") {
-      await addEvent({
-        channel,
-        type: "blue",
-        status: "not_set",
-        time: old.startedAt
-      });
+      const age = now() - old.startedAt;
+
+      if (age >= FAST_SWITCH_MS) {
+        await addEvent({
+          channel,
+          type: "blue",
+          status: "not_set",
+          time: old.startedAt
+        });
+
+        console.log(
+          "❌ BLUE NOT SET:",
+          channel
+        );
+      } else {
+        console.log(
+          "⚡ FAST SWITCH BLUE IGNORED:",
+          channel,
+          age
+        );
+      }
 
       delete pending[channel];
     }
@@ -210,7 +243,7 @@ async function startTimer(channel, expectedLevel) {
   }
 
   // ==================================
-  // reminder after 60 sec
+  // reminder timer
   // ==================================
   activeTimers[channel] = setTimeout(
     async () => {
