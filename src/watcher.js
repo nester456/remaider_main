@@ -68,7 +68,7 @@ async function getRealLevel(channel) {
 }
 
 // ------------------------------------
-// LEVEL UPDATE (PRIVATE GROUP)
+// LEVEL UPDATE
 // ------------------------------------
 async function updateLevel(channel, text) {
   const level = detectLevel(text);
@@ -80,13 +80,13 @@ async function updateLevel(channel, text) {
   const p = pending[channel];
   if (!p) return;
 
-  // ❗ тільки після reminder
+  // тільки після reminder
   if (!p.reminderAt) {
     log("NO REMINDER → SKIP EVENT:", channel);
     return;
   }
 
-  // -------- BLUE --------
+  // BLUE
   if (p.expected === "blue" && level === "blue") {
     const delay = Math.round((now() - p.reminderAt) / 60000);
 
@@ -104,7 +104,7 @@ async function updateLevel(channel, text) {
     return;
   }
 
-  // -------- GREEN --------
+  // GREEN
   if (p.expected === "green" && level === "green") {
     const delay = Math.round((now() - p.reminderAt) / 60000);
 
@@ -126,22 +126,20 @@ async function updateLevel(channel, text) {
 }
 
 // ------------------------------------
-// START TIMER (PUBLIC ALERT)
+// START TIMER
 // ------------------------------------
 async function startTimer(channel, expectedLevel) {
   log("START TIMER:", channel, expectedLevel);
 
   const current = await getRealLevel(channel);
 
-  // очистка таймера
+  // clear old timer
   if (activeTimers[channel]) {
     clearTimeout(activeTimers[channel]);
     delete activeTimers[channel];
   }
 
-  // ------------------------------------
-  // FAST SWITCH FIX (КЛЮЧОВЕ)
-  // ------------------------------------
+  // FAST SWITCH FIX
   const old = pending[channel];
 
   if (old) {
@@ -150,7 +148,6 @@ async function startTimer(channel, expectedLevel) {
     if (age < FAST_SWITCH_MS) {
       log("FAST SWITCH:", channel);
 
-      // ❗ якщо був reminder — зберігаємо як not_set
       if (old.reminderAt) {
         await addEvent({
           channel,
@@ -170,7 +167,7 @@ async function startTimer(channel, expectedLevel) {
     }
   }
 
-  // skip логіка
+  // skip
   if (expectedLevel === "blue" && isAlert(current)) {
     log("SKIP BLUE (already alert):", channel);
     return;
@@ -188,18 +185,19 @@ async function startTimer(channel, expectedLevel) {
     levelAtReminder: null
   };
 
-  // ------------------------------------
   // TIMER
-  // ------------------------------------
   activeTimers[channel] = setTimeout(async () => {
     const p = pending[channel];
     if (!p) return;
 
-    const latest = await getRealLevel(channel);
+    // 🔥 FIX RACE CONDITION
+    await new Promise(r => setTimeout(r, 2000));
+
+    const latest = getLastLevel(channel);
 
     log("TIMER FIRED:", channel, latest);
 
-    // -------- BLUE --------
+    // BLUE
     if (p.expected === "blue") {
       if (latest !== "blue") {
         await sendMessage(
@@ -213,7 +211,7 @@ async function startTimer(channel, expectedLevel) {
       }
     }
 
-    // -------- GREEN --------
+    // GREEN
     if (p.expected === "green") {
       if (latest !== "green") {
         await sendMessage(
@@ -234,7 +232,7 @@ async function startTimer(channel, expectedLevel) {
 }
 
 // ------------------------------------
-// FINAL CHECK (NOT SET)
+// FINAL CHECK
 // ------------------------------------
 setInterval(async () => {
   for (const channel in pending) {
