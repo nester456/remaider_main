@@ -39,7 +39,7 @@ function detectLevel(text) {
 }
 
 // ------------------------------------
-// live check
+// LIVE CHECK
 // ------------------------------------
 async function getRealLevel(channel) {
   const saved = getLastLevel(channel);
@@ -80,7 +80,7 @@ async function updateLevel(channel, text) {
   const p = pending[channel];
   if (!p) return;
 
-  // ❗ ВАЖЛИВО: без reminder нічого не пишемо
+  // ❗ тільки після reminder
   if (!p.reminderAt) {
     log("NO REMINDER → SKIP EVENT:", channel);
     return;
@@ -139,13 +139,33 @@ async function startTimer(channel, expectedLevel) {
     delete activeTimers[channel];
   }
 
-  // FAST SWITCH
+  // ------------------------------------
+  // FAST SWITCH FIX (КЛЮЧОВЕ)
+  // ------------------------------------
   const old = pending[channel];
+
   if (old) {
     const age = now() - old.startedAt;
 
     if (age < FAST_SWITCH_MS) {
-      log("FAST SWITCH IGNORE:", channel);
+      log("FAST SWITCH:", channel);
+
+      // ❗ якщо був reminder — зберігаємо як not_set
+      if (old.reminderAt) {
+        await addEvent({
+          channel,
+          type: old.expected,
+          time: old.startedAt,
+          status: "not_set",
+          hadRed: old.levelAtReminder === "red",
+          hadYellow: old.levelAtReminder === "yellow"
+        });
+
+        log("FAST SWITCH → SAVE NOT_SET:", channel);
+      } else {
+        log("FAST SWITCH WITHOUT REMINDER → IGNORE:", channel);
+      }
+
       delete pending[channel];
     }
   }
