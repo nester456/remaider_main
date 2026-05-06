@@ -45,7 +45,7 @@ async function getRealLevel(channel) {
   const saved = getLastLevel(channel);
 
   if (saved !== null) {
-    log("LIVE CHECK SKIP:", channel, saved);
+    log("LIVE CHECK CACHE:", channel, saved);
     return saved;
   }
 
@@ -75,50 +75,64 @@ async function updateLevel(channel, text) {
   if (!level) return;
 
   await saveLevel(channel, level);
+
   log("LEVEL UPDATE:", channel, level);
 
   const p = pending[channel];
-  if (!p) return;
 
-  // тільки після reminder
-  if (!p.reminderAt) {
-    log("NO REMINDER → SKIP EVENT:", channel);
+  if (!p) {
+    log("NO PENDING:", channel);
     return;
   }
 
+  // reminder ще не було
+  if (!p.reminderAt) {
+    log("NO REMINDER → WAIT:", channel);
+    return;
+  }
+
+  // ------------------------------------
   // BLUE
+  // ------------------------------------
   if (p.expected === "blue" && level === "blue") {
-    const delay = Math.round((now() - p.reminderAt) / 60000);
+    let delay = Math.round((now() - p.reminderAt) / 60000);
+
+    // reminder був → мінімум 1 хв
+    if (delay === 0) delay = 1;
 
     await addEvent({
       channel,
       type: "blue",
       time: p.startedAt,
-      status: delay === 0 ? "on_time" : "late",
+      status: "late",
       delay
     });
 
-    log("BLUE EVENT:", channel, delay);
+    log("BLUE RESOLVED:", channel, delay);
 
     delete pending[channel];
     return;
   }
 
+  // ------------------------------------
   // GREEN
+  // ------------------------------------
   if (p.expected === "green" && level === "green") {
-    const delay = Math.round((now() - p.reminderAt) / 60000);
+    let delay = Math.round((now() - p.reminderAt) / 60000);
+
+    if (delay === 0) delay = 1;
 
     await addEvent({
       channel,
       type: "green",
       time: p.startedAt,
-      status: delay === 0 ? "on_time" : "late",
+      status: "late",
       delay,
       hadRed: p.levelAtReminder === "red",
       hadYellow: p.levelAtReminder === "yellow"
     });
 
-    log("GREEN EVENT:", channel, delay);
+    log("GREEN RESOLVED:", channel, delay);
 
     delete pending[channel];
     return;
@@ -133,13 +147,15 @@ async function startTimer(channel, expectedLevel) {
 
   const current = await getRealLevel(channel);
 
-  // clear old timer
+  // очистка старого timer
   if (activeTimers[channel]) {
     clearTimeout(activeTimers[channel]);
     delete activeTimers[channel];
   }
 
-  // FAST SWITCH FIX
+  // ------------------------------------
+  // FAST SWITCH
+  // ------------------------------------
   const old = pending[channel];
 
   if (old) {
@@ -148,6 +164,7 @@ async function startTimer(channel, expectedLevel) {
     if (age < FAST_SWITCH_MS) {
       log("FAST SWITCH:", channel);
 
+      // reminder був → записуємо
       if (old.reminderAt) {
         await addEvent({
           channel,
@@ -160,21 +177,26 @@ async function startTimer(channel, expectedLevel) {
 
         log("FAST SWITCH → SAVE NOT_SET:", channel);
       } else {
-        log("FAST SWITCH WITHOUT REMINDER → IGNORE:", channel);
+        log("FAST SWITCH WITHOUT REMINDER:", channel);
       }
 
       delete pending[channel];
     }
   }
 
-  // skip
+  // ------------------------------------
+  // SKIP LOGIC
+  // ------------------------------------
+
+  // BLUE
   if (expectedLevel === "blue" && isAlert(current)) {
-    log("SKIP BLUE (already alert):", channel);
+    log("SKIP BLUE:", channel, current);
     return;
   }
 
+  // GREEN
   if (expectedLevel === "green" && current === "green") {
-    log("SKIP GREEN (already green):", channel);
+    log("SKIP GREEN:", channel);
     return;
   }
 
@@ -185,46 +207,66 @@ async function startTimer(channel, expectedLevel) {
     levelAtReminder: null
   };
 
+  // ------------------------------------
   // TIMER
+  // ------------------------------------
   activeTimers[channel] = setTimeout(async () => {
     const p = pending[channel];
-    if (!p) return;
+
+    if (!p) {
+      log("NO PENDING ON TIMER:", channel);
+      return;
+    }
 
     // 🔥 FIX RACE CONDITION
     await new Promise(r => setTimeout(r, 2000));
 
-    const latest = getLastLevel(channel);
+    // 🔥 беремо актуальний рівень
+    const latest = await getRealLevel(channel);
 
-    log("TIMER FIRED:", channel, latest);
+    log("TIMER CHECK:", channel, latest);
 
+    // ------------------------------------
     // BLUE
+    // ------------------------------------
     if (p.expected === "blue") {
-      if (latest !== "blue") {
-        await sendMessage(
-          `❗❗❗ Увага, ви не поставили 🔷 синій рівень тривоги в ${channel}`
-        );
+      // якщо вже alert → reminder не треба
+      if (isAlert(latest)) {
+        log("BLUE REMINDER SKIPPED:", channel, latest);
 
-        p.reminderAt = now();
-        log("BLUE REMINDER SENT:", channel);
-      } else {
-        log("BLUE REMINDER SKIPPED:", channel);
+        delete pending[channel];
+        return;
       }
+
+      await sendMessage(
+        `❗❗❗ Увага, ви не поставили 🔷 синій рівень тривоги в ${channel}`
+      );
+
+      p.reminderAt = now();
+
+      log("BLUE REMINDER SENT:", channel);
     }
 
+    // ------------------------------------
     // GREEN
+    // ------------------------------------
     if (p.expected === "green") {
-      if (latest !== "green") {
-        await sendMessage(
-          `❗❗❗ Увага, ви не поставили ✅ зелений рівень тривоги в ${channel}`
-        );
-
-        p.reminderAt = now();
-        p.levelAtReminder = latest;
-
-        log("GREEN REMINDER SENT:", channel);
-      } else {
+      // якщо вже green → skip
+      if (latest === "green") {
         log("GREEN REMINDER SKIPPED:", channel);
+
+        delete pending[channel];
+        return;
       }
+
+      await sendMessage(
+        `❗❗❗ Увага, ви не поставили ✅ зелений рівень тривоги в ${channel}`
+      );
+
+      p.reminderAt = now();
+      p.levelAtReminder = latest;
+
+      log("GREEN REMINDER SENT:", channel, latest);
     }
 
     delete activeTimers[channel];
@@ -242,19 +284,47 @@ setInterval(async () => {
 
     const age = now() - p.reminderAt;
 
-    if (age > 5 * 60000) {
-      await addEvent({
-        channel,
-        type: p.expected,
-        time: p.startedAt,
-        status: "not_set",
-        hadRed: p.levelAtReminder === "red",
-        hadYellow: p.levelAtReminder === "yellow"
-      });
+    // чекаємо ще 5 хв після reminder
+    if (age < 5 * 60000) continue;
 
-      log("FINAL NOT_SET:", channel);
+    const latest = await getRealLevel(channel);
 
-      delete pending[channel];
+    // ------------------------------------
+    // BLUE
+    // ------------------------------------
+    if (p.expected === "blue") {
+      if (latest !== "blue") {
+        await addEvent({
+          channel,
+          type: "blue",
+          time: p.startedAt,
+          status: "not_set"
+        });
+
+        log("BLUE FINAL NOT_SET:", channel);
+
+        delete pending[channel];
+      }
+    }
+
+    // ------------------------------------
+    // GREEN
+    // ------------------------------------
+    if (p.expected === "green") {
+      if (latest !== "green") {
+        await addEvent({
+          channel,
+          type: "green",
+          time: p.startedAt,
+          status: "not_set",
+          hadRed: latest === "red",
+          hadYellow: latest === "yellow"
+        });
+
+        log("GREEN FINAL NOT_SET:", channel);
+
+        delete pending[channel];
+      }
     }
   }
 }, 60000);
@@ -267,6 +337,6 @@ function cancelTimer(channel, level) {
 module.exports = {
   startTimer,
   updateLevel,
-  cancelTimer,
+ cancelTimer,
   setFetchLatestLevel
 };
