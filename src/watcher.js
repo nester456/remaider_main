@@ -145,6 +145,13 @@ async function updateLevel(channel, text) {
 async function startTimer(channel, expectedLevel) {
   log("START TIMER:", channel, expectedLevel);
 
+  // ❗ якщо вже є активний pending —
+  // не створюємо новий, щоб не втратити попередній інцидент
+  if (pending[channel]) {
+    log("PENDING EXISTS → SKIP NEW:", channel);
+    return;
+  }
+
   const current = await getRealLevel(channel);
 
   // очистка старого timer
