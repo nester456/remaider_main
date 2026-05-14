@@ -1,3 +1,4 @@
+
 const { sendMessage } = require("./notifier");
 const { getLastLevel, saveLevel, addEvent } = require("./storage");
 
@@ -6,6 +7,8 @@ const FAST_SWITCH_MS = 90000;
 
 const activeTimers = {};
 const pending = {};
+
+global.pending = pending;
 
 let fetchLatestLevelFn = null;
 
@@ -97,7 +100,6 @@ async function updateLevel(channel, text) {
   if (p.expected === "blue" && level === "blue") {
     let delay = Math.round((now() - p.reminderAt) / 60000);
 
-    // reminder був → мінімум 1 хв
     if (delay === 0) delay = 1;
 
     await addEvent({
@@ -146,10 +148,26 @@ async function startTimer(channel, expectedLevel) {
   log("START TIMER:", channel, expectedLevel);
 
   // ❗ якщо вже є активний pending —
-  // не створюємо новий, щоб не втратити попередній інцидент
+  // закриваємо його як not_set
   if (pending[channel]) {
-    log("PENDING EXISTS → SKIP NEW:", channel);
-    return;
+    const old = pending[channel];
+
+    if (old.reminderAt) {
+      await addEvent({
+        channel,
+        type: old.expected,
+        time: old.startedAt,
+        status: "not_set",
+        hadRed: old.levelAtReminder === "red",
+        hadYellow: old.levelAtReminder === "yellow"
+      });
+
+      log("OLD PENDING CLOSED AS NOT_SET:", channel);
+    } else {
+      log("OLD PENDING WITHOUT REMINDER:", channel);
+    }
+
+    delete pending[channel];
   }
 
   const current = await getRealLevel(channel);
@@ -171,7 +189,6 @@ async function startTimer(channel, expectedLevel) {
     if (age < FAST_SWITCH_MS) {
       log("FAST SWITCH:", channel);
 
-      // reminder був → записуємо
       if (old.reminderAt) {
         await addEvent({
           channel,
@@ -225,10 +242,8 @@ async function startTimer(channel, expectedLevel) {
       return;
     }
 
-    // 🔥 FIX RACE CONDITION
     await new Promise(r => setTimeout(r, 2000));
 
-    // 🔥 беремо актуальний рівень
     const latest = await getRealLevel(channel);
 
     log("TIMER CHECK:", channel, latest);
@@ -237,7 +252,6 @@ async function startTimer(channel, expectedLevel) {
     // BLUE
     // ------------------------------------
     if (p.expected === "blue") {
-      // якщо вже alert → reminder не треба
       if (isAlert(latest)) {
         log("BLUE REMINDER SKIPPED:", channel, latest);
 
@@ -258,7 +272,6 @@ async function startTimer(channel, expectedLevel) {
     // GREEN
     // ------------------------------------
     if (p.expected === "green") {
-      // якщо вже green → skip
       if (latest === "green") {
         log("GREEN REMINDER SKIPPED:", channel);
 
@@ -281,62 +294,6 @@ async function startTimer(channel, expectedLevel) {
 }
 
 // ------------------------------------
-// FINAL CHECK
-// ------------------------------------
-setInterval(async () => {
-  for (const channel in pending) {
-    const p = pending[channel];
-
-    if (!p.reminderAt) continue;
-
-    const age = now() - p.reminderAt;
-
-    // чекаємо ще 5 хв після reminder
-    if (age < 5 * 60000) continue;
-
-    const latest = await getRealLevel(channel);
-
-    // ------------------------------------
-    // BLUE
-    // ------------------------------------
-    if (p.expected === "blue") {
-      if (latest !== "blue") {
-        await addEvent({
-          channel,
-          type: "blue",
-          time: p.startedAt,
-          status: "not_set"
-        });
-
-        log("BLUE FINAL NOT_SET:", channel);
-
-        delete pending[channel];
-      }
-    }
-
-    // ------------------------------------
-    // GREEN
-    // ------------------------------------
-    if (p.expected === "green") {
-      if (latest !== "green") {
-        await addEvent({
-          channel,
-          type: "green",
-          time: p.startedAt,
-          status: "not_set",
-          hadRed: latest === "red",
-          hadYellow: latest === "yellow"
-        });
-
-        log("GREEN FINAL NOT_SET:", channel);
-
-        delete pending[channel];
-      }
-    }
-  }
-}, 60000);
-
-// ------------------------------------
 function cancelTimer(channel, level) {
   log("CANCEL:", channel, level);
 }
@@ -344,6 +301,7 @@ function cancelTimer(channel, level) {
 module.exports = {
   startTimer,
   updateLevel,
- cancelTimer,
+  cancelTimer,
   setFetchLatestLevel
 };
+

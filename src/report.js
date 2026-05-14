@@ -1,3 +1,4 @@
+
 const { db } = require("./storage");
 const { sendMessage } = require("./notifier");
 const dayjs = require("dayjs");
@@ -14,13 +15,33 @@ function pickWorst(events) {
   const late = events.find(e => e.status === "late");
   if (late) return late;
 
-  return events[0]; // on_time
+  return events[0];
 }
 
 async function generateReport() {
   await db.read();
 
   const events = db.data.events;
+
+  // ------------------------------------
+  // pending → not_set в кінці зміни
+  // ------------------------------------
+  const pending = global.pending || {};
+
+  for (const channel in pending) {
+    const p = pending[channel];
+
+    if (!p.reminderAt) continue;
+
+    events.push({
+      channel,
+      type: p.expected,
+      time: p.startedAt,
+      status: "not_set",
+      hadRed: p.levelAtReminder === "red",
+      hadYellow: p.levelAtReminder === "yellow"
+    });
+  }
 
   if (!events.length) {
     await sendMessage("📊✅ За зміну всі рівні виставлено без затримок");
@@ -102,10 +123,6 @@ async function generateReport() {
         if (e.status === "late") {
           block += `– о ${formatTime(e.time)} на ${e.delay} хв\n`;
         }
-
-        if (e.status === "on_time") {
-          block += `– о ${formatTime(e.time)} ✅ без затримки\n`;
-        }
       }
 
       if (block) {
@@ -137,10 +154,6 @@ async function generateReport() {
             block += `– о ${formatTime(e.time)} на ${e.delay} хв\n`;
           }
         }
-
-        if (e.status === "on_time") {
-          block += `– о ${formatTime(e.time)} ✅ без затримки\n`;
-        }
       }
 
       if (block) {
@@ -159,3 +172,4 @@ async function generateReport() {
 }
 
 module.exports = { generateReport };
+
