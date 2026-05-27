@@ -1,4 +1,5 @@
-// src/index.js
+
+
 
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
@@ -191,8 +192,12 @@ function detectLevel(text) {
 
             matched.add(channel);
 
-            // alert
-            if (textNorm.includes("повітряна тривога")) {
+            // ------------------------------------
+            // REAL AIR ALERT ONLY
+            // ------------------------------------
+            if (
+              textNorm.includes("повітряна тривога в")
+            ) {
               console.log("🎯 ALERT →", channel);
 
               await startTimer(channel, "blue");
@@ -204,10 +209,11 @@ function detectLevel(text) {
               );
             }
 
-            // clear
+            // ------------------------------------
+            // REAL AIR CLEAR ONLY
+            // ------------------------------------
             if (
-              textNorm.includes("відбій") &&
-              textNorm.includes("тривог")
+              textNorm.includes("відбій тривоги в")
             ) {
               console.log("🎯 CLEAR →", channel);
 
@@ -338,3 +344,4 @@ function detectLevel(text) {
     console.log("❌ GLOBAL ERROR:", err);
   }
 })();
+
