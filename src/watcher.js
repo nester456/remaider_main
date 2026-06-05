@@ -45,26 +45,27 @@ function detectLevel(text) {
 // LIVE CHECK
 // ------------------------------------
 async function getRealLevel(channel) {
+
+  if (fetchLatestLevelFn) {
+    try {
+      const text = await fetchLatestLevelFn(channel);
+      const level = detectLevel(text);
+
+      if (level) {
+        await saveLevel(channel, level);
+        log("LIVE CHECK REAL:", channel, level);
+        return level;
+      }
+    } catch (err) {
+      log("LIVE ERROR:", err.message);
+    }
+  }
+
   const saved = getLastLevel(channel);
 
   if (saved !== null) {
-    log("LIVE CHECK CACHE:", channel, saved);
+    log("LIVE CHECK CACHE FALLBACK:", channel, saved);
     return saved;
-  }
-
-  if (!fetchLatestLevelFn) return null;
-
-  try {
-    const text = await fetchLatestLevelFn(channel);
-    const level = detectLevel(text);
-
-    if (level) {
-      await saveLevel(channel, level);
-      log("LIVE LEVEL SAVED:", channel, level);
-      return level;
-    }
-  } catch (err) {
-    log("LIVE ERROR:", err.message);
   }
 
   return null;
@@ -88,11 +89,29 @@ async function updateLevel(channel, text) {
     return;
   }
 
-  // reminder ще не було
-  if (!p.reminderAt) {
-    log("NO REMINDER → WAIT:", channel);
+// reminder ще не було
+if (!p.reminderAt) {
+
+  if (
+    (p.expected === "blue" && level === "blue") ||
+    (p.expected === "green" && level === "green")
+  ) {
+
+    log("LEVEL SET BEFORE REMINDER:", channel);
+
+    delete pending[channel];
+
+    if (activeTimers[channel]) {
+      clearTimeout(activeTimers[channel]);
+      delete activeTimers[channel];
+    }
+
     return;
   }
+
+  log("NO REMINDER → WAIT:", channel);
+  return;
+}
 
   // ------------------------------------
   // BLUE
