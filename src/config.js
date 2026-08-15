@@ -16,7 +16,6 @@ channelIds: {
   "2797404503": "Sumy Alerts DRC",
   "2525242495": "Kherson Alerts DRC",
   "2832814919": "Slovyansk Alerts DRC",
-  "2876029828": "Zaporizhzhia Alerts DRC",
   "2814265584": "Mykolaiv Alerts DRC",
   "2552939614": "Kyiv Alerts DRC"
 },
@@ -30,7 +29,6 @@ channelIds: {
     "Shostka Alerts DRC": ["шосткинський район"],
     "Slovyansk Alerts DRC": ["краматорський район"],
     "Sumy Alerts DRC": ["сумський район"],
-    "Barvinkove Alerts DRC": ["ізюмський район"],
-    "Zaporizhzhia Alerts DRC": ["м запоріжжя", "запоріжжя"]
+    "Barvinkove Alerts DRC": ["ізюмський район"]
   }
 };
