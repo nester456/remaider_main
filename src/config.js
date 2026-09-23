@@ -3,7 +3,7 @@ module.exports = {
   apiHash: process.env.API_HASH,
   session: process.env.SESSION,
 
-  sourceChannel: "air_alert_ua",
+  sourceChannel: "DRC_Safety_UA_bot",
 
   notifyBotToken: process.env.BOT_TOKEN,
   notifyChannelId: process.env.CHANNEL_ID,
