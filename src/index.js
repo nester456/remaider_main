@@ -1,8 +1,7 @@
-
-
-
 const { TelegramClient } = require("telegram");
+
 const { StringSession } = require("telegram/sessions");
+
 const { NewMessage } = require("telegram/events");
 
 const config = require("./config");
@@ -15,6 +14,7 @@ const {
 } = require("./watcher");
 
 const { initDB } = require("./storage");
+
 const { generateReport } = require("./report");
 
 console.log("🚀 START FILE");
@@ -22,12 +22,13 @@ console.log("🚀 START FILE");
 // ------------------------------------
 // normalize
 // ------------------------------------
+
 function normalize(text) {
   return (text || "")
     .toLowerCase()
     .replace(/#/g, "")
     .replace(/\./g, "")
-    .replace(/_/g, " ")
+    .replace(/\_/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -35,6 +36,7 @@ function normalize(text) {
 // ------------------------------------
 // level detect with priority
 // ------------------------------------
+
 function detectLevel(text) {
   if (!text) return null;
 
@@ -47,11 +49,56 @@ function detectLevel(text) {
 }
 
 // ------------------------------------
+// SOURCE ALERT TYPE
+// ------------------------------------
+// Only these two events from DRC_Safety_UA_bot
+// are relevant:
+//
+// 🟡 Air alert — yellow level → BLUE
+// 🟢 Air alert cleared       → GREEN
+//
+// Everything else is ignored.
+// ------------------------------------
+
+function detectSourceEvent(text) {
+  const textNorm = normalize(text);
+
+  // ------------------------------------
+  // AIR ALERT — YELLOW ONLY
+  // ------------------------------------
+
+  if (
+    textNorm.includes("повітряна тривога") &&
+    textNorm.includes("жовтий рівень")
+  ) {
+    return "blue";
+  }
+
+  // ------------------------------------
+  // AIR ALERT CLEAR
+  // ------------------------------------
+
+  if (
+    textNorm.includes("відбій повітряної тривоги")
+  ) {
+    return "green";
+  }
+
+  // ------------------------------------
+  // EVERYTHING ELSE — IGNORE
+  // ------------------------------------
+
+  return null;
+}
+
+// ------------------------------------
 // main
 // ------------------------------------
+
 (async () => {
   try {
     console.log("🔧 INIT DB...");
+
     await initDB();
 
     const client = new TelegramClient(
@@ -62,6 +109,7 @@ function detectLevel(text) {
     );
 
     console.log("🔌 BEFORE CONNECT...");
+
     await client.connect();
 
     console.log("✅ CONNECTED TO TELEGRAM");
@@ -69,6 +117,7 @@ function detectLevel(text) {
     // ------------------------------------
     // watcher live-check hook
     // ------------------------------------
+
     setFetchLatestLevel(async (channelName) => {
       const chatId = Object.keys(config.channelIds).find(
         (id) => config.channelIds[id] === channelName
@@ -99,7 +148,9 @@ function detectLevel(text) {
         );
 
         return text;
+
       } catch (err) {
+
         console.log(
           "⚠️ LIVE FETCH ERROR:",
           channelName,
@@ -121,6 +172,7 @@ function detectLevel(text) {
     // ------------------------------------
     // init source pointer
     // ------------------------------------
+
     let lastMessageId = 0;
 
     const init = await client.getMessages(
@@ -129,31 +181,42 @@ function detectLevel(text) {
     );
 
     if (init.length > 0) {
+
       lastMessageId = init[0].id;
-      console.log("🔐 INITIALIZED AT:", lastMessageId);
+
+      console.log(
+        "🔐 INITIALIZED AT:",
+        lastMessageId
+      );
     }
 
     // ------------------------------------
     // dialogs
     // ------------------------------------
+
     const dialogs = await client.getDialogs();
 
     console.log("📚 ALL DIALOGS:");
 
     dialogs.forEach((d) => {
+
       console.log(
         "TITLE:",
         d.title,
         "| ID:",
         d.id?.toString?.() || d.id
       );
+
     });
 
     // ====================================
     // PUBLIC ALERT SOURCE POLLING
     // ====================================
+
     setInterval(async () => {
+
       try {
+
         const messages = await client.getMessages(
           config.sourceChannel,
           { limit: 10 }
@@ -166,26 +229,64 @@ function detectLevel(text) {
         );
 
         for (const msg of sorted) {
+
           if (!msg.message) continue;
+
           if (msg.id <= lastMessageId) continue;
 
           lastMessageId = msg.id;
 
           const text = msg.message;
+
           const textNorm = normalize(text);
 
           console.log("\n📡 AIR ALERT:");
-          console.log("💬 TEXT:", text);
+
+          console.log(
+            "💬 TEXT:",
+            text
+          );
+
+          // ------------------------------------
+          // DETECT ONLY REQUIRED SOURCE EVENT
+          // ------------------------------------
+
+          const sourceEvent = detectSourceEvent(text);
+
+          // ------------------------------------
+          // IGNORE EVERYTHING ELSE
+          // ------------------------------------
+
+          if (!sourceEvent) {
+
+            console.log(
+              "⏭️ IGNORED SOURCE MESSAGE"
+            );
+
+            continue;
+          }
+
+          console.log(
+            "🎯 SOURCE EVENT:",
+            sourceEvent
+          );
+
+          // ------------------------------------
+          // FIND REGION
+          // ------------------------------------
 
           const matched = new Set();
 
           for (const [channel, keywords] of Object.entries(
             config.regions
           )) {
+
             if (matched.has(channel)) continue;
 
             const hit = keywords.some((keyword) =>
-              textNorm.includes(normalize(keyword))
+              textNorm.includes(
+                normalize(keyword)
+              )
             );
 
             if (!hit) continue;
@@ -193,52 +294,61 @@ function detectLevel(text) {
             matched.add(channel);
 
             // ------------------------------------
-            // REAL AIR ALERT ONLY
+            // START TIMER
             // ------------------------------------
-            if (
-              textNorm.includes("повітряна тривога в")
-            ) {
-              console.log("🎯 ALERT →", channel);
 
-              await startTimer(channel, "blue");
+            console.log(
+              "🎯 MATCHED REGION:",
+              channel
+            );
 
-              console.log(
-                "📝 START TIMER REQUEST SAVED:",
-                channel,
-                "blue"
-              );
-            }
+            await startTimer(
+              channel,
+              sourceEvent
+            );
 
-            // ------------------------------------
-            // REAL AIR CLEAR ONLY
-            // ------------------------------------
-            if (
-              textNorm.includes("відбій тривоги в")
-            ) {
-              console.log("🎯 CLEAR →", channel);
+            console.log(
+              "📝 START TIMER REQUEST SAVED:",
+              channel,
+              sourceEvent
+            );
+          }
 
-              await startTimer(channel, "green");
+          // ------------------------------------
+          // NO REGION FOUND
+          // ------------------------------------
 
-              console.log(
-                "📝 START TIMER REQUEST SAVED:",
-                channel,
-                "green"
-              );
-            }
+          if (matched.size === 0) {
+
+            console.log(
+              "⚠️ SOURCE EVENT BUT REGION NOT FOUND"
+            );
           }
         }
+
       } catch (err) {
-        console.log("❌ POLLING ERROR:", err.message);
+
+        console.log(
+          "❌ POLLING ERROR:",
+          err.message
+        );
+
       }
+
     }, 10000);
 
     // ====================================
     // PRIVATE CHANNELS
     // ====================================
+
     client.addEventHandler(
+
       async (event) => {
+
         try {
+
           const msg = event.message;
+
           if (!msg?.message) return;
 
           const text = msg.message;
@@ -246,22 +356,40 @@ function detectLevel(text) {
           let chatId = null;
 
           if (msg.peerId?.channelId) {
-            chatId = msg.peerId.channelId.toString();
+
+            chatId =
+              msg.peerId.channelId.toString();
+
           }
 
           if (msg.peerId?.chatId) {
-            chatId = msg.peerId.chatId.toString();
+
+            chatId =
+              msg.peerId.chatId.toString();
+
           }
 
           console.log("\n📩 NEW GROUP MESSAGE");
-          console.log("📩 CHAT ID:", chatId);
-          console.log("💬 TEXT:", text);
+
+          console.log(
+            "📩 CHAT ID:",
+            chatId
+          );
+
+          console.log(
+            "💬 TEXT:",
+            text
+          );
 
           const channelName =
             config.channelIds[chatId];
 
           if (!channelName) {
-            console.log("⚠️ UNKNOWN CHANNEL");
+
+            console.log(
+              "⚠️ UNKNOWN CHANNEL"
+            );
+
             return;
           }
 
@@ -271,7 +399,11 @@ function detectLevel(text) {
           );
 
           // save level in DB
-          await updateLevel(channelName, text);
+
+          await updateLevel(
+            channelName,
+            text
+          );
 
           console.log(
             "📝 LEVEL UPDATE SAVED:",
@@ -279,7 +411,9 @@ function detectLevel(text) {
           );
 
           // detect level
-          const level = detectLevel(text);
+
+          const level =
+            detectLevel(text);
 
           console.log(
             "📊 DETECTED LEVEL:",
@@ -287,14 +421,19 @@ function detectLevel(text) {
           );
 
           // cancel active timer
+
           if (level) {
+
             console.log(
               "🛑 CANCEL REQUEST:",
               channelName,
               level
             );
 
-            cancelTimer(channelName, level);
+            cancelTimer(
+              channelName,
+              level
+            );
 
             console.log(
               "📝 CANCEL REQUEST DONE:",
@@ -302,46 +441,71 @@ function detectLevel(text) {
               level
             );
           }
+
         } catch (err) {
+
           console.log(
             "❌ GROUP HANDLER ERROR:",
             err.message
           );
+
         }
+
       },
+
       new NewMessage({})
     );
 
     // ====================================
     // REPORTS
     // ====================================
+
     setInterval(async () => {
+
       try {
+
         const now = new Date();
 
         const kyivHour =
           (now.getUTCHours() + 3) % 24;
 
-        const min = now.getUTCMinutes();
+        const min =
+          now.getUTCMinutes();
 
         if (
           (kyivHour === 8 ||
             kyivHour === 20) &&
           min === 55
         ) {
-          console.log("📊 GENERATE REPORT");
+
+          console.log(
+            "📊 GENERATE REPORT"
+          );
 
           await generateReport();
 
-          console.log("📝 REPORT SENT");
+          console.log(
+            "📝 REPORT SENT"
+          );
         }
+
       } catch (err) {
-        console.log("❌ REPORT ERROR:", err.message);
+
+        console.log(
+          "❌ REPORT ERROR:",
+          err.message
+        );
+
       }
+
     }, 60000);
 
   } catch (err) {
-    console.log("❌ GLOBAL ERROR:", err);
+
+    console.log(
+      "❌ GLOBAL ERROR:",
+      err
+    );
+
   }
 })();
-
