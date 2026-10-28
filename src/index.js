@@ -466,11 +466,20 @@ function detectSourceEvent(text) {
 
         const now = new Date();
 
-        const kyivHour =
-          (now.getUTCHours() + 3) % 24;
+        const kyivTime = new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/Kyiv",
+          hour: "2-digit",
+          minute: "2-digit",
+          hourCycle: "h23"
+        }).formatToParts(now);
 
-        const min =
-          now.getUTCMinutes();
+        const kyivHour = Number(
+          kyivTime.find(part => part.type === "hour").value
+        );
+
+        const min = Number(
+          kyivTime.find(part => part.type === "minute").value
+        );
 
         if (
           (kyivHour === 8 ||
