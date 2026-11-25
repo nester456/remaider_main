@@ -54,7 +54,7 @@ function detectLevel(text) {
 // Only these two events from DRC_Safety_UA_bot
 // are relevant:
 //
-// 🟡 Air alert — yellow level → BLUE
+// 🟡/🔴 Air alert — yellow or red level → BLUE
 // 🟢 Air alert cleared       → GREEN
 //
 // Everything else is ignored.
@@ -64,12 +64,13 @@ function detectSourceEvent(text) {
   const textNorm = normalize(text);
 
   // ------------------------------------
-  // AIR ALERT — YELLOW ONLY
+  // AIR ALERT — YELLOW OR RED
   // ------------------------------------
 
   if (
     textNorm.includes("повітряна тривога") &&
-    textNorm.includes("жовтий рівень")
+    (textNorm.includes("жовтий рівень") ||
+      textNorm.includes("червоний рівень"))
   ) {
     return "blue";
   }
@@ -147,7 +148,7 @@ function detectSourceEvent(text) {
           text.replace(/\n/g, " ").slice(0, 80)
         );
 
-        return text;
+        return { text, date: Number(msgs[0].date) * 1000 };
 
       } catch (err) {
 
@@ -283,11 +284,13 @@ function detectSourceEvent(text) {
 
             if (matched.has(channel)) continue;
 
-            const hit = keywords.some((keyword) =>
-              textNorm.includes(
-                normalize(keyword)
-              )
-            );
+            const hit = keywords.some((keyword) => {
+              const region = normalize(keyword);
+              if (region === "харків") {
+                return /(^|[^\p{L}\p{N}])харків($|[^\p{L}\p{N}])/u.test(textNorm);
+              }
+              return textNorm.includes(region);
+            });
 
             if (!hit) continue;
 
@@ -304,7 +307,8 @@ function detectSourceEvent(text) {
 
             await startTimer(
               channel,
-              sourceEvent
+              sourceEvent,
+              Number(msg.date) * 1000
             );
 
             console.log(

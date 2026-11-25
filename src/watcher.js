@@ -44,12 +44,19 @@ function detectLevel(text) {
 // ------------------------------------
 // LIVE CHECK
 // ------------------------------------
-async function getRealLevel(channel) {
+async function getRealLevel(channel, greenSince = null) {
 
   if (fetchLatestLevelFn) {
     try {
-      const text = await fetchLatestLevelFn(channel);
+      const message = await fetchLatestLevelFn(channel);
+      const text = typeof message === "string" ? message : message?.text;
       const level = detectLevel(text);
+
+      if (level === "green" && greenSince !== null &&
+          (!Number.isFinite(message?.date) || message.date < greenSince)) {
+        log("GREEN BEFORE CLEAR IGNORED:", channel);
+        return null;
+      }
 
       if (level) {
         await saveLevel(channel, level);
@@ -62,6 +69,8 @@ async function getRealLevel(channel) {
   }
 
   const saved = getLastLevel(channel);
+
+  if (saved === "green" && greenSince !== null) return null;
 
   if (saved !== null) {
     log("LIVE CHECK CACHE FALLBACK:", channel, saved);
@@ -93,7 +102,7 @@ async function updateLevel(channel, text) {
 if (!p.reminderAt) {
 
   if (
-    (p.expected === "blue" && level === "blue") ||
+    (p.expected === "blue" && isAlert(level)) ||
     (p.expected === "green" && level === "green")
   ) {
 
@@ -116,7 +125,7 @@ if (!p.reminderAt) {
   // ------------------------------------
   // BLUE
   // ------------------------------------
-  if (p.expected === "blue" && level === "blue") {
+  if (p.expected === "blue" && isAlert(level)) {
     let delay = Math.round((now() - p.reminderAt) / 60000);
 
     if (delay === 0) delay = 1;
@@ -163,7 +172,8 @@ if (!p.reminderAt) {
 // ------------------------------------
 // START TIMER
 // ------------------------------------
-async function startTimer(channel, expectedLevel) {
+async function startTimer(channel, expectedLevel, sourceTime = now()) {
+  const greenSince = expectedLevel === "green" ? sourceTime : null;
   log("START TIMER:", channel, expectedLevel);
 
   // ❗ якщо вже є активний pending —
@@ -189,7 +199,7 @@ async function startTimer(channel, expectedLevel) {
     delete pending[channel];
   }
 
-  const current = await getRealLevel(channel);
+  const current = await getRealLevel(channel, greenSince);
 
   // очистка старого timer
   if (activeTimers[channel]) {
@@ -263,7 +273,9 @@ async function startTimer(channel, expectedLevel) {
 
     await new Promise(r => setTimeout(r, 2000));
 
-    const latest = await getRealLevel(channel);
+    const latest = await getRealLevel(channel, greenSince);
+
+    if (pending[channel] !== p) return;
 
     log("TIMER CHECK:", channel, latest);
 
@@ -279,7 +291,7 @@ async function startTimer(channel, expectedLevel) {
       }
 
       await sendMessage(
-        `❗❗❗ Увага, ви не поставили 🔷 синій рівень тривоги в ${channel}`
+        `❗❗❗ Увага, ви не поставили 🔷 синій, 🟡 жовтий або 🚨 червоний рівень тривоги в ${channel}`
       );
 
       p.reminderAt = now();

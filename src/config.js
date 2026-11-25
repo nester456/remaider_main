@@ -21,8 +21,8 @@ channelIds: {
 },
 
   regions: {
-    "Dnipro Alerts DRC": ["дніпровський район"],
-    "Kharkiv Alerts DRC": ["м харків"],
+    "Dnipro Alerts DRC": ["дніпровський район", "м дніпро", "м_дніпро"],
+    "Kharkiv Alerts DRC": ["харків"],
     "Kherson Alerts DRC": ["херсонський район"],
     "Kyiv Alerts DRC": ["м київ"],
     "Mykolaiv Alerts DRC": ["миколаївський район"],
