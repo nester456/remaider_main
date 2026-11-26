@@ -44,7 +44,7 @@ function detectLevel(text) {
 // ------------------------------------
 // LIVE CHECK
 // ------------------------------------
-async function getRealLevel(channel, greenSince = null) {
+async function getRealLevel(channel) {
 
   if (fetchLatestLevelFn) {
     try {
@@ -52,11 +52,6 @@ async function getRealLevel(channel, greenSince = null) {
       const text = typeof message === "string" ? message : message?.text;
       const level = detectLevel(text);
 
-      if (level === "green" && greenSince !== null &&
-          (!Number.isFinite(message?.date) || message.date < greenSince)) {
-        log("GREEN BEFORE CLEAR IGNORED:", channel);
-        return null;
-      }
 
       if (level) {
         await saveLevel(channel, level);
@@ -69,8 +64,6 @@ async function getRealLevel(channel, greenSince = null) {
   }
 
   const saved = getLastLevel(channel);
-
-  if (saved === "green" && greenSince !== null) return null;
 
   if (saved !== null) {
     log("LIVE CHECK CACHE FALLBACK:", channel, saved);
@@ -172,8 +165,7 @@ if (!p.reminderAt) {
 // ------------------------------------
 // START TIMER
 // ------------------------------------
-async function startTimer(channel, expectedLevel, sourceTime = now()) {
-  const greenSince = expectedLevel === "green" ? sourceTime : null;
+async function startTimer(channel, expectedLevel) {
   log("START TIMER:", channel, expectedLevel);
 
   // ❗ якщо вже є активний pending —
@@ -199,7 +191,7 @@ async function startTimer(channel, expectedLevel, sourceTime = now()) {
     delete pending[channel];
   }
 
-  const current = await getRealLevel(channel, greenSince);
+  const current = await getRealLevel(channel);
 
   // очистка старого timer
   if (activeTimers[channel]) {
@@ -273,7 +265,7 @@ async function startTimer(channel, expectedLevel, sourceTime = now()) {
 
     await new Promise(r => setTimeout(r, 2000));
 
-    const latest = await getRealLevel(channel, greenSince);
+    const latest = await getRealLevel(channel);
 
     if (pending[channel] !== p) return;
 
